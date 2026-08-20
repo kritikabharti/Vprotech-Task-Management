@@ -23,3 +23,15 @@ export function minutesToHours(mins) {
 export function roleLabel(role) {
   return { admin: 'Administrator', team_lead: 'Team Lead', employee: 'Employee' }[role] || role;
 }
+
+// The backend returns profile images as a relative path (e.g. "/uploads/xyz.jpg")
+// which must be resolved against the API's origin, not the frontend's own origin,
+// otherwise the <img> tag 404s whenever the frontend and backend are on different
+// domains (the normal case in production).
+export function resolveAssetUrl(path) {
+  if (!path) return path;
+  if (/^https?:\/\//i.test(path)) return path;
+  const apiUrl = import.meta.env.VITE_API_URL || '';
+  const apiOrigin = apiUrl.replace(/\/api\/?$/, '');
+  return `${apiOrigin}${path}`;
+}

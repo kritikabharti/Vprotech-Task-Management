@@ -15,11 +15,12 @@ const notificationSchema = new mongoose.Schema(
         'evening_submitted',
         'missing_update',
         'report_info',
+        'announcement',
       ],
       required: true,
     },
     relatedRecord: { type: mongoose.Schema.Types.ObjectId, default: null },
-    relatedModel: { type: String, enum: ['DailyTaskReport', 'User', null], default: null },
+    relatedModel: { type: String, enum: ['DailyTaskReport', 'User', 'Announcement', null], default: null },
     isRead: { type: Boolean, default: false },
   },
   { timestamps: true }

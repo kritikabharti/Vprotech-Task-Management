@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
-import { FiSave, FiSend, FiSunrise, FiCheckCircle } from 'react-icons/fi';
+import { FiSave, FiSend, FiSunrise, FiCheckCircle, FiEdit2 } from 'react-icons/fi';
 import { Link } from 'react-router-dom';
 import axiosClient from '../../api/axiosClient';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -10,11 +10,7 @@ import EmptyState from '../../components/EmptyState';
 import StatusBadge from '../../components/StatusBadge';
 import { todayISO } from '../../utils/format';
 
-const STATUS_OPTIONS = [
-  'Completed',
-  'Partially Completed',
-  'Not Completed',
-];
+const STATUS_OPTIONS = ['Completed', 'Partially Completed', 'Not Completed'];
 
 function defaultPercentForStatus(status) {
   if (status === 'Completed') return 100;
@@ -29,183 +25,87 @@ export default function MyEveningTask() {
   const [report, setReport] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  // NEW: controls the success screen after submission
-  const [submitted, setSubmitted] = useState(false);
+  // When today's evening update is already submitted, default to showing
+  // the success summary instead of the form - editTasks flips back to the
+  // editable form, since the backend keeps accepting edits until the
+  // report is actually reviewed/approved.
+  const [editTasks, setEditTasks] = useState(false);
 
-  const {
-    register,
-    handleSubmit,
-    reset,
-    setValue,
-    watch,
-  } = useForm({
-    defaultValues: {
-      entries: [],
-      remarks: '',
-    },
-  });
+  const { register, handleSubmit, reset, setValue, watch } = useForm({ defaultValues: { entries: [], remarks: '' } });
 
-  const loadDay = useCallback(
-    async (d) => {
-      setLoading(true);
-      setLoadError(null);
+  const loadDay = useCallback(async (d) => {
+    setLoading(true);
+    setLoadError(null);
+    setEditTasks(false);
+    try {
+      const { data: res } = await axiosClient.get('/tasks/day', { params: { date: d } });
+      const r = res.data.report;
+      setReport(r);
 
-      // Reset success state when changing date
-      setSubmitted(false);
-
-      try {
-        const { data: res } = await axiosClient.get('/tasks/day', {
-          params: { date: d },
+      if (r && r.morning && r.morning.tasks.length > 0) {
+        const eveningByRef = new Map((r.evening?.tasks || []).map((e) => [String(e.taskRef), e]));
+        reset({
+          entries: r.morning.tasks.map((t) => {
+            const existing = eveningByRef.get(String(t._id));
+            return {
+              taskRef: t._id,
+              title: t.title,
+              estimatedTimeMinutes: t.estimatedTimeMinutes,
+              status: existing?.status || 'Completed',
+              completionPercentage: existing ? existing.completionPercentage : 100,
+              actualTimeSpentMinutes: existing ? existing.actualTimeSpentMinutes : t.estimatedTimeMinutes,
+              remarks: existing?.remarks || '',
+            };
+          }),
+          remarks: r.evening?.remarks || '',
         });
-
-        const r = res.data.report;
-
-        setReport(r);
-
-        // If this day's evening update was already submitted,
-        // directly show the success message.
-        if (r?.status === 'evening_submitted') {
-          setSubmitted(true);
-
-          reset({
-            entries: [],
-            remarks: '',
-          });
-
-          return;
-        }
-
-        if (r && r.morning.tasks.length > 0) {
-          const eveningByRef = new Map(
-            (r.evening.tasks || []).map((e) => [
-              String(e.taskRef),
-              e,
-            ])
-          );
-
-          reset({
-            entries: r.morning.tasks.map((t) => {
-              const existing = eveningByRef.get(String(t._id));
-
-              return {
-                taskRef: t._id,
-                title: t.title,
-                estimatedTimeMinutes:
-                  t.estimatedTimeMinutes,
-
-                status:
-                  existing?.status || 'Completed',
-
-                completionPercentage: existing
-                  ? existing.completionPercentage
-                  : 100,
-
-                actualTimeSpentMinutes: existing
-                  ? existing.actualTimeSpentMinutes
-                  : t.estimatedTimeMinutes,
-
-                remarks: existing?.remarks || '',
-              };
-            }),
-
-            remarks: r.evening.remarks || '',
-          });
-        } else {
-          reset({
-            entries: [],
-            remarks: '',
-          });
-        }
-      } catch (err) {
-        const message =
-          err.response?.data?.message ||
-          'Failed to load tasks for this date.';
-
-        setLoadError(message);
-        toast.error(message);
-      } finally {
-        setLoading(false);
+      } else {
+        reset({ entries: [], remarks: '' });
       }
-    },
-    [reset]
-  );
+    } catch (err) {
+      const message = err.response?.data?.message || 'Failed to load tasks for this date.';
+      setLoadError(message);
+      toast.error(message);
+    } finally {
+      setLoading(false);
+    }
+  }, [reset]);
 
-  useEffect(() => {
-    loadDay(date);
-  }, [date, loadDay]);
+  useEffect(() => { loadDay(date); }, [date, loadDay]);
 
   const entries = watch('entries') || [];
+  const noMorningPlan = !loadError && (!report || !report.morning || report.morning.tasks.length === 0);
 
-  /*
-   * IMPORTANT:
-   * evening_submitted must be treated as locked.
-   */
-  const locked =
-    report &&
-    ![
-      'morning_submitted',
-      'needs_correction',
-    ].includes(report.status);
-
-  const noMorningPlan =
-    !loadError &&
-    (!report ||
-      !report.morning ||
-      report.morning.tasks.length === 0);
+  // Matches the backend exactly: evening_submitted stays editable up until
+  // the report is approved (or sent back for correction, also editable).
+  const editable = report && ['morning_submitted', 'evening_submitted', 'needs_correction'].includes(report.status);
+  const locked = report && !editable;
+  const showSuccessSummary = report?.status === 'evening_submitted' && !editTasks;
 
   const onSave = async (values, submit) => {
     setSaving(true);
-
     try {
-      const { data: res } =
-        await axiosClient.post('/tasks/evening', {
-          date,
-
-          tasks: values.entries.map((e) => ({
-            taskRef: e.taskRef,
-            status: e.status,
-            completionPercentage: Number(
-              e.completionPercentage
-            ),
-            actualTimeSpentMinutes: Number(
-              e.actualTimeSpentMinutes
-            ),
-            remarks: e.remarks,
-          })),
-
-          remarks: values.remarks,
-
-          submit,
-        });
-
+      const { data: res } = await axiosClient.post('/tasks/evening', {
+        date,
+        tasks: values.entries.map((e) => ({
+          taskRef: e.taskRef,
+          status: e.status,
+          completionPercentage: Number(e.completionPercentage),
+          actualTimeSpentMinutes: Number(e.actualTimeSpentMinutes),
+          remarks: e.remarks,
+        })),
+        remarks: values.remarks,
+        submit,
+      });
       setReport(res.data.report);
-
       if (submit) {
-        /*
-         * IMPORTANT:
-         * Clear the form
-         */
-        reset({
-          entries: [],
-          remarks: '',
-        });
-
-        /*
-         * Show success screen
-         */
-        setSubmitted(true);
-
-        toast.success(
-          "Today's evening task submitted successfully!"
-        );
+        setEditTasks(false);
+        toast.success("Today's evening task submitted successfully!");
       } else {
         toast.success('Draft saved.');
       }
     } catch (err) {
-      toast.error(
-        err.response?.data?.message ||
-          'Could not save evening update.'
-      );
+      toast.error(err.response?.data?.message || 'Could not save evening update.');
     } finally {
       setSaving(false);
     }
@@ -213,149 +113,82 @@ export default function MyEveningTask() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-5">
-
-      {/* Header */}
       <div className="card p-5">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
-          <h2 className="text-lg font-semibold text-navy-800">
-            My Evening Task
-          </h2>
-
+          <h2 className="text-lg font-semibold text-navy-800">My Evening Task</h2>
           <input
             type="date"
             value={date}
             max={todayISO()}
-            onChange={(e) => {
-              setDate(e.target.value);
-              setSubmitted(false);
-            }}
+            onChange={(e) => setDate(e.target.value)}
             className="input-field w-auto"
           />
         </div>
-
-        <p className="text-sm text-navy-400">
-          Your morning tasks for this date load automatically below.
-        </p>
+        <p className="text-sm text-navy-400">Your morning tasks for this date load automatically below.</p>
       </div>
 
-      {/* Loading */}
       {loading ? (
         <LoadingSpinner label="Loading..." />
-
       ) : loadError ? (
-        /* Error */
-        <div className="card">
-          <ErrorState
-            message={loadError}
-            onRetry={() => loadDay(date)}
-          />
-        </div>
-
+        <div className="card"><ErrorState message={loadError} onRetry={() => loadDay(date)} /></div>
       ) : noMorningPlan ? (
-        /* No morning plan */
         <div className="card">
           <EmptyState
             icon={FiSunrise}
             title="No morning plan found for this date"
             description="Submit your morning update first — evening completion is always linked to that day's planned tasks."
-            action={
-              <Link
-                to="/team-lead/my-morning-task"
-                className="btn-primary"
-              >
-                Go to My Morning Task
-              </Link>
-            }
+            action={<Link to="/team-lead/my-morning-task" className="btn-primary">Go to My Morning Task</Link>}
           />
         </div>
-
-      ) : submitted || report?.status === 'evening_submitted' ? (
-        /*
-         * SUCCESS SCREEN
-         */
+      ) : showSuccessSummary ? (
         <div className="card p-8">
           <div className="flex flex-col items-center justify-center text-center py-10">
-
             <div className="flex items-center justify-center w-20 h-20 rounded-full bg-green-100 mb-5">
               <FiCheckCircle className="w-12 h-12 text-green-600" />
             </div>
-
-            <h2 className="text-2xl font-semibold text-navy-800 mb-3">
-              Evening Task Submitted Successfully
-            </h2>
-
-            <p className="text-navy-500 text-base mb-2">
-              Today's evening task has been submitted successfully.
-            </p>
-
-            <p className="text-sm text-navy-400 mb-6">
-              Date: {date}
-            </p>
-
-            <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-50 text-green-700 text-sm font-medium">
-              <FiCheckCircle className="w-4 h-4" />
-              Evening update submitted
+            <h2 className="text-2xl font-semibold text-navy-800 mb-3">Evening Task Submitted</h2>
+            <p className="text-navy-500 text-base mb-2">Today's evening task has been submitted successfully.</p>
+            <p className="text-sm text-navy-400 mb-6">Date: {date}</p>
+            <div className="flex items-center gap-3 flex-wrap justify-center">
+              <span className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-50 text-green-700 text-sm font-medium">
+                <FiCheckCircle className="w-4 h-4" /> Evening update submitted
+              </span>
+              <button onClick={() => setEditTasks(true)} className="btn-secondary">
+                <FiEdit2 className="h-4 w-4" /> Edit / Add More Tasks
+              </button>
             </div>
-
+            <p className="text-xs text-navy-400 mt-4">
+              Forgot to plan something? <Link to="/team-lead/my-morning-task" className="text-navy-600 underline">Add it to My Morning Task</Link> first, then it'll appear here.
+            </p>
           </div>
         </div>
-
       ) : locked ? (
-        /* Locked status */
         <div className="card p-5 bg-navy-50 text-sm text-navy-600 flex items-center justify-between">
-          <span>
-            Status:{' '}
-            <StatusBadge status={report.status} />
-          </span>
+          <span>Status: <StatusBadge status={report.status} /></span>
         </div>
-
       ) : (
-        /* Evening task form */
         <form className="space-y-3">
+          {report?.status === 'evening_submitted' && (
+            <div className="card p-3 bg-green-50 border border-green-100 flex items-center gap-2 text-sm text-green-700">
+              <FiCheckCircle className="h-4 w-4 shrink-0" />
+              Already submitted — you're editing your submission. Save to update it.
+            </div>
+          )}
 
           {entries.map((entry, idx) => (
-            <div
-              key={entry.taskRef}
-              className="card p-3"
-            >
+            <div key={entry.taskRef} className="card p-3">
               <div className="flex items-center gap-2 flex-wrap">
-
-                <p
-                  className="font-medium text-navy-800 flex-1 min-w-[140px] truncate"
-                  title={entry.title}
-                >
-                  {entry.title}
-                </p>
-
+                <p className="font-medium text-navy-800 flex-1 min-w-[140px] truncate" title={entry.title}>{entry.title}</p>
                 <select
                   className="input-field w-40 shrink-0"
-                  {...register(
-                    `entries.${idx}.status`
-                  )}
+                  {...register(`entries.${idx}.status`)}
                   onChange={(e) => {
-                    setValue(
-                      `entries.${idx}.status`,
-                      e.target.value
-                    );
-
-                    setValue(
-                      `entries.${idx}.completionPercentage`,
-                      defaultPercentForStatus(
-                        e.target.value
-                      )
-                    );
+                    setValue(`entries.${idx}.status`, e.target.value);
+                    setValue(`entries.${idx}.completionPercentage`, defaultPercentForStatus(e.target.value));
                   }}
                 >
-                  {STATUS_OPTIONS.map((s) => (
-                    <option
-                      key={s}
-                      value={s}
-                    >
-                      {s}
-                    </option>
-                  ))}
+                  {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
-
                 <input
                   type="number"
                   min={0}
@@ -363,84 +196,32 @@ export default function MyEveningTask() {
                   title="Completion %"
                   className="input-field w-20 shrink-0"
                   placeholder="%"
-                  {...register(
-                    `entries.${idx}.completionPercentage`,
-                    {
-                      min: 0,
-                      max: 100,
-                    }
-                  )}
+                  {...register(`entries.${idx}.completionPercentage`, { min: 0, max: 100 })}
                 />
-
                 <input
                   type="number"
                   min={0}
                   title="Actual minutes spent"
                   className="input-field w-24 shrink-0"
                   placeholder={`${entry.estimatedTimeMinutes} min plan`}
-                  {...register(
-                    `entries.${idx}.actualTimeSpentMinutes`,
-                    {
-                      min: 0,
-                    }
-                  )}
+                  {...register(`entries.${idx}.actualTimeSpentMinutes`, { min: 0 })}
                 />
-
-                <input
-                  className="input-field w-40 shrink-0"
-                  placeholder="Remarks (optional)"
-                  {...register(
-                    `entries.${idx}.remarks`
-                  )}
-                />
-
+                <input className="input-field w-40 shrink-0" placeholder="Remarks (optional)" {...register(`entries.${idx}.remarks`)} />
               </div>
             </div>
           ))}
 
-          {/* Overall remarks */}
           <div className="card p-3">
-            <textarea
-              rows={2}
-              className="input-field"
-              placeholder="Overall remarks for today (optional)"
-              {...register('remarks')}
-            />
+            <textarea rows={2} className="input-field" placeholder="Overall remarks for today (optional)" {...register('remarks')} />
           </div>
 
-          {/* Buttons */}
           <div className="flex flex-wrap gap-3 justify-end">
-
-            <button
-              type="button"
-              disabled={saving}
-              onClick={handleSubmit((v) =>
-                onSave(v, false)
-              )}
-              className="btn-secondary"
-            >
-              <FiSave className="h-4 w-4" />
-
-              {saving
-                ? 'Saving...'
-                : 'Save Draft'}
+            <button type="button" disabled={saving} onClick={handleSubmit((v) => onSave(v, false))} className="btn-secondary">
+              <FiSave className="h-4 w-4" /> {saving ? 'Saving...' : 'Save Draft'}
             </button>
-
-            <button
-              type="button"
-              disabled={saving}
-              onClick={handleSubmit((v) =>
-                onSave(v, true)
-              )}
-              className="btn-primary"
-            >
-              <FiSend className="h-4 w-4" />
-
-              {saving
-                ? 'Submitting...'
-                : 'Submit Evening Update'}
+            <button type="button" disabled={saving} onClick={handleSubmit((v) => onSave(v, true))} className="btn-primary">
+              <FiSend className="h-4 w-4" /> {saving ? 'Submitting...' : (report?.status === 'evening_submitted' ? 'Update Submission' : 'Submit Evening Update')}
             </button>
-
           </div>
         </form>
       )}

@@ -1,17 +1,15 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { toast } from 'react-toastify';
-import { FiPlus, FiTrash2, FiSave, FiSend } from 'react-icons/fi';
+import { FiPlus, FiTrash2, FiSave, FiSend, FiCheckCircle } from 'react-icons/fi';
 import axiosClient from '../../api/axiosClient';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ErrorState from '../../components/ErrorState';
 import { todayISO } from '../../utils/format';
 
 // A factory, not a shared object: emptyTask() must return a NEW object
-// each call. The previous version was a single module-level object
-// reused by reference in useState's default, append(), and the reset()
-// fallback - multiple "blank" task rows could end up sharing the same
-// underlying object, so editing one could bleed into another.
+// each call, or multiple "blank" task rows could end up sharing the
+// same underlying object reference.
 const emptyTask = () => ({ title: '', description: '', priority: 'Medium', expectedCompletion: '', estimatedTimeMinutes: 60, remarks: '' });
 
 export default function MorningTaskUpdate() {
@@ -60,6 +58,11 @@ export default function MorningTaskUpdate() {
 
   useEffect(() => { loadDay(date); }, [date, loadDay]);
 
+  // Already submitted (morning_submitted) is intentionally still editable -
+  // it matches the backend, which keeps accepting edits/add-more-tasks until
+  // the report moves past review (approved) or the day's evening update has
+  // been filed (evening_submitted), at which point the plan is finalized.
+  const submittedButEditable = existingReport?.status === 'morning_submitted';
   const locked = !!existingReport && !['draft', 'needs_correction', 'morning_submitted'].includes(existingReport.status);
 
   const onSave = async (values, submit) => {
@@ -72,15 +75,21 @@ export default function MorningTaskUpdate() {
         submit,
       });
       setExistingReport(res.data.report);
+      // Re-populate the form with what the server actually saved, rather
+      // than clearing it - the whole point of this update is that the
+      // employee can keep editing / add more tasks right after submitting.
+      reset({
+        tasks: res.data.report.morning.tasks.map((t) => ({
+          title: t.title,
+          description: t.description,
+          priority: t.priority,
+          expectedCompletion: t.expectedCompletion,
+          estimatedTimeMinutes: t.estimatedTimeMinutes,
+          remarks: t.remarks,
+        })),
+        remarks: res.data.report.morning.remarks || '',
+      });
       toast.success(submit ? 'Morning tasks submitted!' : 'Draft saved.');
-      // After a real submit (not a draft save), clear the form back to a
-      // single blank task row. The server keeps the actual submitted
-      // data - re-opening this date will reload it via loadDay() as
-      // normal - this just clears the on-screen boxes so the page isn't
-      // left showing the values you just typed.
-      if (submit) {
-        reset({ tasks: [emptyTask()], remarks: '' });
-      }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Could not save morning tasks.');
     } finally {
@@ -116,6 +125,13 @@ export default function MorningTaskUpdate() {
         </div>
       ) : (
         <form className="space-y-3">
+          {submittedButEditable && (
+            <div className="card p-3 bg-green-50 border border-green-100 flex items-center gap-2 text-sm text-green-700">
+              <FiCheckCircle className="h-4 w-4 shrink-0" />
+              Submitted for review. You can still edit tasks or add more until your team lead reviews it.
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium text-navy-700">Total Planned Tasks: <span className="text-navy-900 font-semibold">{totalTasks}</span></p>
             <button type="button" onClick={() => append(emptyTask())} className="btn-secondary">
@@ -170,7 +186,7 @@ export default function MorningTaskUpdate() {
               <FiSave className="h-4 w-4" /> Save Draft
             </button>
             <button type="button" disabled={saving} onClick={handleSubmit((v) => onSave(v, true))} className="btn-primary">
-              <FiSend className="h-4 w-4" /> Submit Morning Update
+              <FiSend className="h-4 w-4" /> {submittedButEditable ? 'Update Submission' : 'Submit Morning Update'}
             </button>
           </div>
         </form>

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { toast } from 'react-toastify';
-import { FiPlus, FiTrash2, FiSave, FiSend } from 'react-icons/fi';
+import { FiPlus, FiTrash2, FiSave, FiSend, FiCheckCircle } from 'react-icons/fi';
 import axiosClient from '../../api/axiosClient';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ErrorState from '../../components/ErrorState';
@@ -60,6 +60,7 @@ export default function MyMorningTask() {
 
   useEffect(() => { loadDay(date); }, [date, loadDay]);
 
+  const submittedButEditable = existingReport?.status === 'morning_submitted';
   const locked = !!existingReport && !['draft', 'needs_correction', 'morning_submitted'].includes(existingReport.status);
 
   const onSave = async (values, submit) => {
@@ -72,10 +73,20 @@ export default function MyMorningTask() {
         submit,
       });
       setExistingReport(res.data.report);
+      // Re-populate with what was actually saved instead of clearing, so
+      // the team lead can keep editing / add more tasks right after submitting.
+      reset({
+        tasks: res.data.report.morning.tasks.map((t) => ({
+          title: t.title,
+          description: t.description,
+          priority: t.priority,
+          expectedCompletion: t.expectedCompletion,
+          estimatedTimeMinutes: t.estimatedTimeMinutes,
+          remarks: t.remarks,
+        })),
+        remarks: res.data.report.morning.remarks || '',
+      });
       toast.success(submit ? 'Morning tasks submitted!' : 'Draft saved.');
-      if (submit) {
-        reset({ tasks: [emptyTask()], remarks: '' });
-      }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Could not save morning tasks.');
     } finally {
@@ -105,6 +116,13 @@ export default function MyMorningTask() {
         </div>
       ) : (
         <form className="space-y-3">
+          {submittedButEditable && (
+            <div className="card p-3 bg-green-50 border border-green-100 flex items-center gap-2 text-sm text-green-700">
+              <FiCheckCircle className="h-4 w-4 shrink-0" />
+              Submitted for review. You can still edit tasks or add more until it's reviewed.
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium text-navy-700">Total Planned Tasks: <span className="text-navy-900 font-semibold">{totalTasks}</span></p>
             <button type="button" onClick={() => append(emptyTask())} className="btn-secondary">
@@ -159,7 +177,7 @@ export default function MyMorningTask() {
               <FiSave className="h-4 w-4" /> Save Draft
             </button>
             <button type="button" disabled={saving} onClick={handleSubmit((v) => onSave(v, true))} className="btn-primary">
-              <FiSend className="h-4 w-4" /> Submit Morning Update
+              <FiSend className="h-4 w-4" /> {submittedButEditable ? 'Update Submission' : 'Submit Morning Update'}
             </button>
           </div>
         </form>

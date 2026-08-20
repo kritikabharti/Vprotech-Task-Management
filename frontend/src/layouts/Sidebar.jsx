@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
   FiGrid, FiSunrise, FiSunset, FiList, FiBarChart2, FiBell, FiUser, FiLock, FiX,
-  FiUsers, FiCheckSquare, FiBriefcase, FiFileText, FiTrendingUp,
+  FiUsers, FiCheckSquare, FiBriefcase, FiFileText, FiTrendingUp, FiVolume2,
 } from 'react-icons/fi';
 import { useDispatch, useSelector } from 'react-redux';
 import { closeSidebar } from '../store/uiSlice';
@@ -43,6 +43,7 @@ const ADMIN_LINKS = [
   { to: '/admin/reports', label: 'Reports', icon: FiBarChart2 },
   { to: '/admin/performance', label: 'Performance', icon: FiTrendingUp },
   { to: '/admin/audit-logs', label: 'Audit Logs', icon: FiFileText },
+  { to: '/admin/announcements', label: 'Announcements', icon: FiVolume2 },
   { to: '/admin/notifications', label: 'Notifications', icon: FiBell },
   { to: '/admin/profile', label: 'Profile', icon: FiUser },
   { to: '/admin/change-password', label: 'Change Password', icon: FiLock },

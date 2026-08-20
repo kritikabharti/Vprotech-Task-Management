@@ -41,6 +41,7 @@ const AdminEveningUpdates = lazy(() => import('./pages/admin/AdminEveningUpdates
 const AdminReview = lazy(() => import('./pages/admin/AdminReview'));
 const AdminReports = lazy(() => import('./pages/admin/AdminReports'));
 const AdminAuditLogs = lazy(() => import('./pages/admin/AdminAuditLogs'));
+const AdminAnnouncements = lazy(() => import('./pages/admin/AdminAnnouncements'));
 const AdminPerformance = lazy(() => import('./pages/admin/AdminPerformance'));
 
 function roleDashboardPath(role) {
@@ -115,6 +116,7 @@ export default function App() {
             <Route path="reports" element={<AdminReports />} />
             <Route path="performance" element={<AdminPerformance />} />
             <Route path="audit-logs" element={<AdminAuditLogs />} />
+            <Route path="announcements" element={<AdminAnnouncements />} />
             <Route path="notifications" element={<Notifications />} />
             <Route path="profile" element={<Profile />} />
             <Route path="change-password" element={<ChangePassword />} />

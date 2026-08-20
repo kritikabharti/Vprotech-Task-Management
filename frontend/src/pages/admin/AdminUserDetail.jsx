@@ -6,7 +6,7 @@ import axiosClient from '../../api/axiosClient';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
-import { formatDateLabel, roleLabel } from '../../utils/format';
+import { formatDateLabel, roleLabel, resolveAssetUrl } from '../../utils/format';
 
 export default function AdminUserDetail() {
   const { id } = useParams();
@@ -64,7 +64,7 @@ export default function AdminUserDetail() {
 
       <div className="card p-6 flex items-center gap-5">
         <div className="h-16 w-16 rounded-full bg-navy-100 flex items-center justify-center overflow-hidden shrink-0">
-          {user.profileImage ? <img src={user.profileImage} alt="" className="h-full w-full object-cover" /> : <FiUser className="h-7 w-7 text-navy-400" />}
+          {user.profileImage ? <img src={resolveAssetUrl(user.profileImage)} alt="" className="h-full w-full object-cover" /> : <FiUser className="h-7 w-7 text-navy-400" />}
         </div>
         <div className="flex-1">
           <div className="flex items-center gap-2">

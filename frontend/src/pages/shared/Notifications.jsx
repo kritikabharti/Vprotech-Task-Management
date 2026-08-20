@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
-import { FiBell, FiCheck } from 'react-icons/fi';
+import { FiBell, FiCheck, FiVolume2 } from 'react-icons/fi';
 import axiosClient from '../../api/axiosClient';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import EmptyState from '../../components/EmptyState';
@@ -63,6 +63,11 @@ export default function Notifications() {
           {notifications.map((n) => (
             <div key={n._id} className={`flex items-start justify-between gap-3 p-4 ${!n.isRead ? 'bg-navy-50/60' : ''}`}>
               <div>
+                {n.type === 'announcement' && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-brandGreen-600 mb-1">
+                    <FiVolume2 className="h-3 w-3" /> Announcement
+                  </span>
+                )}
                 <p className="text-sm text-navy-800">{n.message}</p>
                 <p className="text-xs text-navy-400 mt-1">{new Date(n.createdAt).toLocaleString()}</p>
               </div>

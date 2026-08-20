@@ -96,7 +96,16 @@ app.use(
 
 app.use(generalLimiter);
 
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// crossOriginResourcePolicy is relaxed to 'cross-origin' so that files
+// served from /uploads (profile images) can be loaded by the frontend
+// when it's hosted on a different origin/domain than the API (e.g. a
+// static host + Render). Without this, helmet's default same-origin
+// policy silently blocks <img> tags from loading uploaded images.
+app.use(
+  '/uploads',
+  helmet.crossOriginResourcePolicy({ policy: 'cross-origin' }),
+  express.static(path.join(__dirname, 'uploads'))
+);
 
 app.get('/api/health', (_req, res) =>
   res.json({

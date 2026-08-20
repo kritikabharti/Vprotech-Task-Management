@@ -6,7 +6,7 @@ import { FiUser, FiUpload } from 'react-icons/fi';
 import axiosClient from '../../api/axiosClient';
 import useAuth from '../../hooks/useAuth';
 import { updateUser } from '../../store/authSlice';
-import { roleLabel } from '../../utils/format';
+import { roleLabel, resolveAssetUrl } from '../../utils/format';
 
 export default function Profile() {
   const { user } = useAuth();
@@ -59,7 +59,7 @@ export default function Profile() {
       <div className="card p-6 flex items-center gap-5">
         <div className="h-20 w-20 rounded-full bg-navy-100 flex items-center justify-center overflow-hidden shrink-0">
           {user?.profileImage ? (
-            <img src={user.profileImage} alt="Profile" className="h-full w-full object-cover" />
+            <img src={resolveAssetUrl(user.profileImage)} alt="Profile" className="h-full w-full object-cover" />
           ) : (
             <FiUser className="h-8 w-8 text-navy-400" />
           )}
