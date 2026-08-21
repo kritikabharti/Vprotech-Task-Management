@@ -95,7 +95,12 @@ export default function EmployeeDashboard() {
       </div>
 
       <div className="card p-5">
-        <h3 className="font-semibold text-navy-800 mb-4">Recent Tasks</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-navy-800">Recent Tasks</h3>
+          <Link to="/employee/my-tasks" className="text-sm text-navy-500 hover:text-navy-800 font-medium">
+            View Full History →
+          </Link>
+        </div>
         {data.recentTasks.length === 0 ? (
           <p className="text-sm text-navy-400">No task history yet.</p>
         ) : (

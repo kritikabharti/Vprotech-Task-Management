@@ -6,20 +6,34 @@ const { sendMail } = require('./emailService');
 // an out-of-band nudge - approvals/returns - not every routine notice,
 // to avoid over-emailing). Silently skipped if SMTP isn't configured;
 // see emailService.js.
+//
+// IMPORTANT: the email send is intentionally NOT awaited here. SMTP
+// (especially over a slow/rate-limited provider like Gmail) can take
+// several seconds - or hang far longer on a bad connection - and an
+// approval/rejection request has no reason to sit there waiting on an
+// email round-trip before responding to the reviewer. The in-app
+// Notification row (what actually drives the UI) is still created and
+// awaited synchronously, so unread counts/bell badges are correct
+// immediately; only the "nice to have" email nudge happens in the
+// background, with its own error handling so a failed send never
+// surfaces as an unhandled rejection.
 async function notify({ recipient, message, type, relatedRecord = null, relatedModel = null, emailToo = false }) {
   try {
     const notification = await Notification.create({ recipient, message, type, relatedRecord, relatedModel });
 
     if (emailToo) {
-      const user = await User.findById(recipient).select('email fullName');
-      if (user?.email) {
-        await sendMail({
-          to: user.email,
-          subject: `VproTech Digital - ${type.replace(/_/g, ' ')}`,
-          text: message,
-          html: `<p>Hi ${user.fullName},</p><p>${message}</p>`,
-        });
-      }
+      User.findById(recipient)
+        .select('email fullName')
+        .then((user) => {
+          if (!user?.email) return null;
+          return sendMail({
+            to: user.email,
+            subject: `VproTech Digital - ${type.replace(/_/g, ' ')}`,
+            text: message,
+            html: `<p>Hi ${user.fullName},</p><p>${message}</p>`,
+          });
+        })
+        .catch((err) => console.error('Notification email failed:', err.message));
     }
 
     return notification;

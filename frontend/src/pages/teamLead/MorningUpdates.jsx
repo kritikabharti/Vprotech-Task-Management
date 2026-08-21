@@ -36,31 +36,48 @@ export default function MorningUpdates() {
           }),
         ]);
 
-        /*
-         * Support both response formats:
-         *
-         * Format 1:
-         * response.data.results
-         *
-         * Format 2:
-         * response.data.data.results
-         */
-
         const missingPayload =
-          missingRes?.data?.data ?? missingRes?.data ?? {};
+          missingRes?.data?.data ??
+          missingRes?.data ??
+          {};
 
         const reportsPayload =
-          reportsRes?.data?.data ?? reportsRes?.data ?? {};
+          reportsRes?.data?.data ??
+          reportsRes?.data ??
+          {};
 
         const missingResults = Array.isArray(missingPayload?.results)
           ? missingPayload.results
           : [];
 
-        const reportResults = Array.isArray(reportsPayload?.reports)
+        let reportResults = Array.isArray(reportsPayload?.reports)
           ? reportsPayload.reports
           : Array.isArray(reportsPayload?.results)
             ? reportsPayload.results
             : [];
+
+        /*
+         * MORNING PAGE
+         *
+         * Only show reports where the morning update
+         * has been submitted.
+         *
+         * Keep approved / needs_correction because
+         * those morning reports may still need to be viewed.
+         */
+        reportResults = reportResults.filter((report) => {
+          const morningSubmitted =
+            !!report?.morning?.submittedAt;
+
+          const status = report?.status;
+
+          return (
+            morningSubmitted ||
+            status === 'morning_submitted' ||
+            status === 'approved' ||
+            status === 'needs_correction'
+          );
+        });
 
         if (!mounted) return;
 
@@ -76,8 +93,8 @@ export default function MorningUpdates() {
 
         toast.error(
           err?.response?.data?.message ||
-            err?.response?.data?.data?.message ||
-            'Failed to load morning updates.'
+          err?.response?.data?.data?.message ||
+          'Failed to load morning updates.'
         );
       } finally {
         if (mounted) {
@@ -93,18 +110,24 @@ export default function MorningUpdates() {
     };
   }, [date]);
 
+  /*
+   * Submission status table
+   */
   const columns = [
     {
       key: 'employee',
       label: 'Employee',
-      render: (row) => row?.employee?.fullName || 'Unknown Employee',
+      render: (row) =>
+        row?.employee?.fullName || 'Unknown Employee',
     },
 
     {
       key: 'morning',
       label: 'Morning',
       render: (row) => (
-        <StatusBadge status={row?.morning || 'missing'} />
+        <StatusBadge
+          status={row?.morning || 'missing'}
+        />
       ),
     },
 
@@ -112,16 +135,22 @@ export default function MorningUpdates() {
       key: 'evening',
       label: 'Evening',
       render: (row) => (
-        <StatusBadge status={row?.evening || 'missing'} />
+        <StatusBadge
+          status={row?.evening || 'missing'}
+        />
       ),
     },
   ];
 
+  /*
+   * Morning task table
+   */
   const reportColumns = [
     {
       key: 'employee',
       label: 'Employee',
-      render: (row) => row?.employee?.fullName || 'Unknown Employee',
+      render: (row) =>
+        row?.employee?.fullName || 'Unknown Employee',
     },
 
     {
@@ -134,14 +163,28 @@ export default function MorningUpdates() {
     },
 
     {
+      key: 'completed',
+      label: 'Completed',
+      render: (row) =>
+        row?.summary?.totalCompleted ??
+        row?.totalCompleted ??
+        0,
+    },
+
+    {
       key: 'status',
-      label: 'Status',
+      label: 'Morning Status',
       render: (row) => (
-        <StatusBadge status={row?.status || 'pending'} />
+        <StatusBadge
+          status={row?.morning?.status || row?.status || 'pending'}
+        />
       ),
     },
   ];
 
+  /*
+   * Missing employees
+   */
   const missingRows = missing.map((item, index) => ({
     ...item,
 
@@ -152,6 +195,11 @@ export default function MorningUpdates() {
       `missing-${index}`,
   }));
 
+  /*
+   * IMPORTANT:
+   *
+   * Morning report opens the MORNING REVIEW page.
+   */
   const handleReportClick = (row) => {
     const reportId =
       row?._id ||
@@ -162,7 +210,7 @@ export default function MorningUpdates() {
       return;
     }
 
-    navigate(`/team-lead/review/${reportId}`);
+    navigate(`/team-lead/morning-review/${reportId}`);
   };
 
   return (
@@ -178,7 +226,9 @@ export default function MorningUpdates() {
           type="date"
           max={todayISO()}
           value={date}
-          onChange={(event) => setDate(event.target.value)}
+          onChange={(event) =>
+            setDate(event.target.value)
+          }
           className="input-field w-auto"
         />
       </div>
@@ -200,9 +250,17 @@ export default function MorningUpdates() {
 
       {/* Morning Task Details */}
       <div className="card p-5">
-        <h3 className="font-semibold text-navy-800 mb-4">
-          Morning Task Details — {date}
-        </h3>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="font-semibold text-navy-800">
+              Morning Task Details — {date}
+            </h3>
+
+            <p className="text-xs text-navy-400 mt-1">
+              Click an employee to review and approve their morning task.
+            </p>
+          </div>
+        </div>
 
         <DataTable
           columns={reportColumns}

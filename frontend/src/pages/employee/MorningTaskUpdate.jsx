@@ -10,7 +10,15 @@ import { todayISO } from '../../utils/format';
 // A factory, not a shared object: emptyTask() must return a NEW object
 // each call, or multiple "blank" task rows could end up sharing the
 // same underlying object reference.
-const emptyTask = () => ({ title: '', description: '', priority: 'Medium', expectedCompletion: '', estimatedTimeMinutes: 60, remarks: '' });
+const emptyTask = () => ({ _id: '', title: '', description: '', priority: 'Medium', expectedCompletion: '', estimatedTimeMinutes: 60, remarks: '' });
+
+function minutesToHoursHint(mins) {
+  const n = Number(mins);
+  if (!n || n <= 0) return null;
+  const h = Math.floor(n / 60);
+  const m = Math.round(n % 60);
+  return `≈ ${h}h ${m}m`;
+}
 
 export default function MorningTaskUpdate() {
   const [date, setDate] = useState(todayISO());
@@ -35,6 +43,7 @@ export default function MorningTaskUpdate() {
       if (report && report.morning.tasks.length > 0) {
         reset({
           tasks: report.morning.tasks.map((t) => ({
+            _id: t._id,
             title: t.title,
             description: t.description,
             priority: t.priority,
@@ -63,7 +72,11 @@ export default function MorningTaskUpdate() {
   // the report moves past review (approved) or the day's evening update has
   // been filed (evening_submitted), at which point the plan is finalized.
   const submittedButEditable = existingReport?.status === 'morning_submitted';
-  const locked = !!existingReport && !['draft', 'needs_correction', 'morning_submitted'].includes(existingReport.status);
+  // 'approved' and 'evening_submitted' both stay editable now too - editing
+  // either sends the report back to morning_submitted for a fresh review
+  // (the backend enforces this; see taskController.submitMorningTasks).
+  const approvedButEditable = existingReport?.status === 'approved';
+  const reopenedForEdit = existingReport?.status === 'evening_submitted';
 
   const onSave = async (values, submit) => {
     setSaving(true);
@@ -80,6 +93,7 @@ export default function MorningTaskUpdate() {
       // employee can keep editing / add more tasks right after submitting.
       reset({
         tasks: res.data.report.morning.tasks.map((t) => ({
+          _id: t._id,
           title: t.title,
           description: t.description,
           priority: t.priority,
@@ -119,16 +133,20 @@ export default function MorningTaskUpdate() {
         <LoadingSpinner label="Loading..." />
       ) : loadError ? (
         <div className="card"><ErrorState message={loadError} onRetry={() => loadDay(date)} /></div>
-      ) : locked ? (
-        <div className="card p-5 bg-navy-50 text-sm text-navy-600">
-          Morning tasks for this date are locked (status: <strong>{existingReport.status.replace('_', ' ')}</strong>) and can no longer be edited.
-        </div>
       ) : (
         <form className="space-y-3">
           {submittedButEditable && (
             <div className="card p-3 bg-green-50 border border-green-100 flex items-center gap-2 text-sm text-green-700">
               <FiCheckCircle className="h-4 w-4 shrink-0" />
               Submitted for review. You can still edit tasks or add more until your team lead reviews it.
+            </div>
+          )}
+          {(approvedButEditable || reopenedForEdit) && (
+            <div className="card p-3 bg-amber-50 border border-amber-100 flex items-center gap-2 text-sm text-amber-700">
+              <FiCheckCircle className="h-4 w-4 shrink-0" />
+              {approvedButEditable
+                ? 'This was already approved. Editing and resubmitting sends it back for review.'
+                : "Evening tasks were already submitted for this day. Editing the plan sends it back for review."}
             </div>
           )}
 
@@ -141,6 +159,7 @@ export default function MorningTaskUpdate() {
 
           {fields.map((field, idx) => (
             <div key={field.id} className="card p-3 space-y-2 relative">
+              <input type="hidden" {...register(`tasks.${idx}._id`)} />
               <div className="flex items-center gap-2">
                 <span className="text-xs font-semibold text-navy-400 shrink-0 w-6">#{idx + 1}</span>
                 <input
@@ -154,14 +173,19 @@ export default function MorningTaskUpdate() {
                   <option>High</option>
                   <option>Urgent</option>
                 </select>
-                <input
-                  type="number"
-                  min={0}
-                  title="Estimated minutes"
-                  className="input-field w-24 shrink-0"
-                  placeholder="Mins"
-                  {...register(`tasks.${idx}.estimatedTimeMinutes`, { required: true, min: 0 })}
-                />
+                <div className="shrink-0">
+                  <input
+                    type="number"
+                    min={0}
+                    title="Estimated minutes"
+                    className="input-field w-24"
+                    placeholder="Mins"
+                    {...register(`tasks.${idx}.estimatedTimeMinutes`, { required: true, min: 0 })}
+                  />
+                  {minutesToHoursHint(watchedTasks?.[idx]?.estimatedTimeMinutes) && (
+                    <p className="text-[11px] text-navy-400 mt-0.5 text-center">{minutesToHoursHint(watchedTasks[idx].estimatedTimeMinutes)}</p>
+                  )}
+                </div>
                 {fields.length > 1 && (
                   <button type="button" onClick={() => remove(idx)} className="text-red-500 hover:text-red-700 shrink-0" aria-label="Remove task">
                     <FiTrash2 className="h-4 w-4" />
@@ -186,7 +210,7 @@ export default function MorningTaskUpdate() {
               <FiSave className="h-4 w-4" /> Save Draft
             </button>
             <button type="button" disabled={saving} onClick={handleSubmit((v) => onSave(v, true))} className="btn-primary">
-              <FiSend className="h-4 w-4" /> {submittedButEditable ? 'Update Submission' : 'Submit Morning Update'}
+              <FiSend className="h-4 w-4" /> {existingReport ? 'Update Submission' : 'Submit Morning Update'}
             </button>
           </div>
         </form>

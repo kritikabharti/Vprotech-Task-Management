@@ -7,8 +7,7 @@ import axiosClient from '../../api/axiosClient';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ErrorState from '../../components/ErrorState';
 import EmptyState from '../../components/EmptyState';
-import StatusBadge from '../../components/StatusBadge';
-import { todayISO } from '../../utils/format';
+import { todayISO, minutesToHours } from '../../utils/format';
 
 const STATUS_OPTIONS = ['Completed', 'Partially Completed', 'Not Completed'];
 
@@ -25,10 +24,11 @@ export default function MyEveningTask() {
   const [report, setReport] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  // When today's evening update is already submitted, default to showing
-  // the success summary instead of the form - editTasks flips back to the
-  // editable form, since the backend keeps accepting edits until the
-  // report is actually reviewed/approved.
+  // When today's evening update is already submitted (or approved),
+  // default to showing the success summary instead of the form -
+  // editTasks flips back to the editable form, since the backend keeps
+  // accepting edits at any status now (an edit after approval sends the
+  // report back to evening_submitted for re-review).
   const [editTasks, setEditTasks] = useState(false);
 
   const { register, handleSubmit, reset, setValue, watch } = useForm({ defaultValues: { entries: [], remarks: '' } });
@@ -76,11 +76,12 @@ export default function MyEveningTask() {
   const entries = watch('entries') || [];
   const noMorningPlan = !loadError && (!report || !report.morning || report.morning.tasks.length === 0);
 
-  // Matches the backend exactly: evening_submitted stays editable up until
-  // the report is approved (or sent back for correction, also editable).
-  const editable = report && ['morning_submitted', 'evening_submitted', 'needs_correction'].includes(report.status);
-  const locked = report && !editable;
-  const showSuccessSummary = report?.status === 'evening_submitted' && !editTasks;
+  // Editable at every status now (see taskController.submitEveningTasks) -
+  // editing after 'approved' sends the report back to evening_submitted
+  // for a fresh review.
+  const isApproved = report?.status === 'approved';
+  const isSubmitted = report?.status === 'evening_submitted';
+  const showSuccessSummary = (isSubmitted || isApproved) && !editTasks;
 
   const onSave = async (values, submit) => {
     setSaving(true);
@@ -146,39 +147,53 @@ export default function MyEveningTask() {
             <div className="flex items-center justify-center w-20 h-20 rounded-full bg-green-100 mb-5">
               <FiCheckCircle className="w-12 h-12 text-green-600" />
             </div>
-            <h2 className="text-2xl font-semibold text-navy-800 mb-3">Evening Task Submitted</h2>
-            <p className="text-navy-500 text-base mb-2">Today's evening task has been submitted successfully.</p>
+            <h2 className="text-2xl font-semibold text-navy-800 mb-3">
+              {isApproved ? 'Evening Update Approved' : 'Evening Task Submitted'}
+            </h2>
+            <p className="text-navy-500 text-base mb-2">
+              {isApproved
+                ? "Today's evening update has been reviewed and approved."
+                : "Today's evening task has been submitted successfully."}
+            </p>
             <p className="text-sm text-navy-400 mb-6">Date: {date}</p>
             <div className="flex items-center gap-3 flex-wrap justify-center">
               <span className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-50 text-green-700 text-sm font-medium">
-                <FiCheckCircle className="w-4 h-4" /> Evening update submitted
+                <FiCheckCircle className="w-4 h-4" /> {isApproved ? 'Approved' : 'Evening update submitted'}
               </span>
               <button onClick={() => setEditTasks(true)} className="btn-secondary">
                 <FiEdit2 className="h-4 w-4" /> Edit / Add More Tasks
               </button>
             </div>
+            {isApproved && (
+              <p className="text-xs text-amber-600 mt-3">Editing an approved update sends it back for review.</p>
+            )}
             <p className="text-xs text-navy-400 mt-4">
               Forgot to plan something? <Link to="/team-lead/my-morning-task" className="text-navy-600 underline">Add it to My Morning Task</Link> first, then it'll appear here.
             </p>
           </div>
         </div>
-      ) : locked ? (
-        <div className="card p-5 bg-navy-50 text-sm text-navy-600 flex items-center justify-between">
-          <span>Status: <StatusBadge status={report.status} /></span>
-        </div>
       ) : (
         <form className="space-y-3">
-          {report?.status === 'evening_submitted' && (
+          {isSubmitted && (
             <div className="card p-3 bg-green-50 border border-green-100 flex items-center gap-2 text-sm text-green-700">
               <FiCheckCircle className="h-4 w-4 shrink-0" />
               Already submitted — you're editing your submission. Save to update it.
+            </div>
+          )}
+          {isApproved && (
+            <div className="card p-3 bg-amber-50 border border-amber-100 flex items-center gap-2 text-sm text-amber-700">
+              <FiCheckCircle className="h-4 w-4 shrink-0" />
+              This was already approved. Editing and resubmitting sends it back for review.
             </div>
           )}
 
           {entries.map((entry, idx) => (
             <div key={entry.taskRef} className="card p-3">
               <div className="flex items-center gap-2 flex-wrap">
-                <p className="font-medium text-navy-800 flex-1 min-w-[140px] truncate" title={entry.title}>{entry.title}</p>
+                <div className="flex-1 min-w-[140px]">
+                  <p className="font-medium text-navy-800 truncate" title={entry.title}>{entry.title}</p>
+                  <p className="text-[11px] text-navy-400">Planned: {minutesToHours(entry.estimatedTimeMinutes)}</p>
+                </div>
                 <select
                   className="input-field w-40 shrink-0"
                   {...register(`entries.${idx}.status`)}
@@ -198,14 +213,19 @@ export default function MyEveningTask() {
                   placeholder="%"
                   {...register(`entries.${idx}.completionPercentage`, { min: 0, max: 100 })}
                 />
-                <input
-                  type="number"
-                  min={0}
-                  title="Actual minutes spent"
-                  className="input-field w-24 shrink-0"
-                  placeholder={`${entry.estimatedTimeMinutes} min plan`}
-                  {...register(`entries.${idx}.actualTimeSpentMinutes`, { min: 0 })}
-                />
+                <div className="shrink-0">
+                  <input
+                    type="number"
+                    min={0}
+                    title="Actual minutes spent"
+                    className="input-field w-24"
+                    placeholder={`${entry.estimatedTimeMinutes} min plan`}
+                    {...register(`entries.${idx}.actualTimeSpentMinutes`, { min: 0 })}
+                  />
+                  <p className="text-[11px] text-navy-400 mt-0.5 text-center">
+                    {minutesToHours(entries[idx]?.actualTimeSpentMinutes)}
+                  </p>
+                </div>
                 <input className="input-field w-40 shrink-0" placeholder="Remarks (optional)" {...register(`entries.${idx}.remarks`)} />
               </div>
             </div>
@@ -220,7 +240,7 @@ export default function MyEveningTask() {
               <FiSave className="h-4 w-4" /> {saving ? 'Saving...' : 'Save Draft'}
             </button>
             <button type="button" disabled={saving} onClick={handleSubmit((v) => onSave(v, true))} className="btn-primary">
-              <FiSend className="h-4 w-4" /> {saving ? 'Submitting...' : (report?.status === 'evening_submitted' ? 'Update Submission' : 'Submit Evening Update')}
+              <FiSend className="h-4 w-4" /> {saving ? 'Submitting...' : (report?.status ? 'Update Submission' : 'Submit Evening Update')}
             </button>
           </div>
         </form>
