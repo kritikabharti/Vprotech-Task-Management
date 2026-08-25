@@ -42,8 +42,17 @@ export default function Profile() {
     const formData = new FormData();
     formData.append('profileImage', file);
     try {
+      // IMPORTANT: don't set a Content-Type header manually here. The
+      // axios instance's default header ('application/json') would
+      // otherwise apply, and even 'multipart/form-data' set explicitly
+      // breaks the upload because it omits the multipart boundary the
+      // browser normally attaches. Passing FormData without a
+      // Content-Type override lets the browser set the header itself
+      // (including the boundary), which is what the backend's multer
+      // parser needs to read the file. This was why photo uploads
+      // failed / silently didn't update.
       const { data: res } = await axiosClient.post('/uploads/profile-image', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        headers: { 'Content-Type': undefined },
       });
       dispatch(updateUser({ profileImage: res.data.profileImage }));
       toast.success('Profile image updated.');
@@ -51,6 +60,10 @@ export default function Profile() {
       toast.error(err.response?.data?.message || 'Upload failed.');
     } finally {
       setUploading(false);
+      // Allow re-selecting the same file (e.g. after a failed upload)
+      // by resetting the input - without this, choosing the identical
+      // file twice in a row doesn't fire onChange the second time.
+      e.target.value = '';
     }
   };
 
