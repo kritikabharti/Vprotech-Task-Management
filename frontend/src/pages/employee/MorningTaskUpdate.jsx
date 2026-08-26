@@ -1558,229 +1558,6 @@
 
 
 
-// import { useEffect, useState, useCallback } from 'react';
-// import { useForm, useFieldArray } from 'react-hook-form';
-// import { toast } from 'react-toastify';
-// import { FiPlus, FiTrash2, FiSave, FiSend, FiCheckCircle } from 'react-icons/fi';
-// import axiosClient from '../../api/axiosClient';
-// import LoadingSpinner from '../../components/LoadingSpinner';
-// import ErrorState from '../../components/ErrorState';
-// import { todayISO } from '../../utils/format';
-
-// // A factory, not a shared object: emptyTask() must return a NEW object
-// // each call, or multiple "blank" task rows could end up sharing the
-// // same underlying object reference.
-// const emptyTask = () => ({ _id: '', title: '', description: '', priority: 'Medium', expectedCompletion: '', estimatedTimeMinutes: 60, remarks: '' });
-
-// function minutesToHoursHint(mins) {
-//   const n = Number(mins);
-//   if (!n || n <= 0) return null;
-//   const h = Math.floor(n / 60);
-//   const m = Math.round(n % 60);
-//   return `≈ ${h}h ${m}m`;
-// }
-
-// export default function MorningTaskUpdate() {
-//   const [date, setDate] = useState(todayISO());
-//   const [loading, setLoading] = useState(true);
-//   const [loadError, setLoadError] = useState(null);
-//   const [existingReport, setExistingReport] = useState(null);
-//   const [saving, setSaving] = useState(false);
-
-//   const { register, control, handleSubmit, reset, watch } = useForm({
-//     defaultValues: { tasks: [emptyTask()], remarks: '' },
-//   });
-//   const { fields, append, remove } = useFieldArray({ control, name: 'tasks' });
-//   const watchedTasks = watch('tasks');
-
-//   const loadDay = useCallback(async (d) => {
-//     setLoading(true);
-//     setLoadError(null);
-//     try {
-//       const { data: res } = await axiosClient.get('/tasks/day', { params: { date: d } });
-//       const report = res.data.report;
-//       setExistingReport(report);
-//       if (report && report.morning.tasks.length > 0) {
-//         reset({
-//           tasks: report.morning.tasks.map((t) => ({
-//             _id: t._id,
-//             title: t.title,
-//             description: t.description,
-//             priority: t.priority,
-//             expectedCompletion: t.expectedCompletion,
-//             estimatedTimeMinutes: t.estimatedTimeMinutes,
-//             remarks: t.remarks,
-//           })),
-//           remarks: report.morning.remarks || '',
-//         });
-//       } else {
-//         reset({ tasks: [emptyTask()], remarks: '' });
-//       }
-//     } catch (err) {
-//       const message = err.response?.data?.message || 'Failed to load tasks for this date.';
-//       setLoadError(message);
-//       toast.error(message);
-//     } finally {
-//       setLoading(false);
-//     }
-//   }, [reset]);
-
-//   useEffect(() => { loadDay(date); }, [date, loadDay]);
-
-//   // Already submitted (morning_submitted) is intentionally still editable -
-//   // it matches the backend, which keeps accepting edits/add-more-tasks until
-//   // the report moves past review (approved) or the day's evening update has
-//   // been filed (evening_submitted), at which point the plan is finalized.
-//   const submittedButEditable = existingReport?.status === 'morning_submitted';
-//   // 'approved' and 'evening_submitted' both stay editable now too - editing
-//   // either sends the report back to morning_submitted for a fresh review
-//   // (the backend enforces this; see taskController.submitMorningTasks).
-//   const approvedButEditable = existingReport?.status === 'approved';
-//   const reopenedForEdit = existingReport?.status === 'evening_submitted';
-
-//   const onSave = async (values, submit) => {
-//     setSaving(true);
-//     try {
-//       const { data: res } = await axiosClient.post('/tasks/morning', {
-//         date,
-//         tasks: values.tasks.map((t) => ({ ...t, estimatedTimeMinutes: Number(t.estimatedTimeMinutes) })),
-//         remarks: values.remarks,
-//         submit,
-//       });
-//       setExistingReport(res.data.report);
-//       // Re-populate the form with what the server actually saved, rather
-//       // than clearing it - the whole point of this update is that the
-//       // employee can keep editing / add more tasks right after submitting.
-//       reset({
-//         tasks: res.data.report.morning.tasks.map((t) => ({
-//           _id: t._id,
-//           title: t.title,
-//           description: t.description,
-//           priority: t.priority,
-//           expectedCompletion: t.expectedCompletion,
-//           estimatedTimeMinutes: t.estimatedTimeMinutes,
-//           remarks: t.remarks,
-//         })),
-//         remarks: res.data.report.morning.remarks || '',
-//       });
-//       toast.success(submit ? 'Morning tasks submitted!' : 'Draft saved.');
-//     } catch (err) {
-//       toast.error(err.response?.data?.message || 'Could not save morning tasks.');
-//     } finally {
-//       setSaving(false);
-//     }
-//   };
-
-//   const totalTasks = watchedTasks?.length || 0;
-
-//   return (
-//     <div className="max-w-4xl mx-auto space-y-5">
-//       <div className="card p-5">
-//         <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
-//           <h2 className="text-lg font-semibold text-navy-800">Morning Task Update</h2>
-//           <input
-//             type="date"
-//             value={date}
-//             max={todayISO()}
-//             onChange={(e) => setDate(e.target.value)}
-//             className="input-field w-auto"
-//           />
-//         </div>
-//         <p className="text-sm text-navy-400">Plan what you intend to work on today. Total tasks are calculated automatically.</p>
-//       </div>
-
-//       {loading ? (
-//         <LoadingSpinner label="Loading..." />
-//       ) : loadError ? (
-//         <div className="card"><ErrorState message={loadError} onRetry={() => loadDay(date)} /></div>
-//       ) : (
-//         <form className="space-y-3">
-//           {submittedButEditable && (
-//             <div className="card p-3 bg-green-50 border border-green-100 flex items-center gap-2 text-sm text-green-700">
-//               <FiCheckCircle className="h-4 w-4 shrink-0" />
-//               Submitted for review. You can still edit tasks or add more until your team lead reviews it.
-//             </div>
-//           )}
-//           {(approvedButEditable || reopenedForEdit) && (
-//             <div className="card p-3 bg-amber-50 border border-amber-100 flex items-center gap-2 text-sm text-amber-700">
-//               <FiCheckCircle className="h-4 w-4 shrink-0" />
-//               {approvedButEditable
-//                 ? 'This was already approved. Editing and resubmitting sends it back for review.'
-//                 : "Evening tasks were already submitted for this day. Editing the plan sends it back for review."}
-//             </div>
-//           )}
-
-//           <div className="flex items-center justify-between">
-//             <p className="text-sm font-medium text-navy-700">Total Planned Tasks: <span className="text-navy-900 font-semibold">{totalTasks}</span></p>
-//             <button type="button" onClick={() => append(emptyTask())} className="btn-secondary">
-//               <FiPlus className="h-4 w-4" /> Add Task
-//             </button>
-//           </div>
-
-//           {fields.map((field, idx) => (
-//             <div key={field.id} className="card p-3 space-y-2 relative">
-//               <input type="hidden" {...register(`tasks.${idx}._id`)} />
-//               <div className="flex items-center gap-2">
-//                 <span className="text-xs font-semibold text-navy-400 shrink-0 w-6">#{idx + 1}</span>
-//                 <input
-//                   className="input-field flex-1"
-//                   placeholder="Task title, e.g. Develop login API"
-//                   {...register(`tasks.${idx}.title`, { required: true })}
-//                 />
-//                 <select className="input-field w-28 shrink-0" {...register(`tasks.${idx}.priority`)}>
-//                   <option>Low</option>
-//                   <option>Medium</option>
-//                   <option>High</option>
-//                   <option>Urgent</option>
-//                 </select>
-//                 <div className="shrink-0">
-//                   <input
-//                     type="number"
-//                     min={0}
-//                     title="Estimated minutes"
-//                     className="input-field w-24"
-//                     placeholder="Mins"
-//                     {...register(`tasks.${idx}.estimatedTimeMinutes`, { required: true, min: 0 })}
-//                   />
-//                   {minutesToHoursHint(watchedTasks?.[idx]?.estimatedTimeMinutes) && (
-//                     <p className="text-[11px] text-navy-400 mt-0.5 text-center">{minutesToHoursHint(watchedTasks[idx].estimatedTimeMinutes)}</p>
-//                   )}
-//                 </div>
-//                 {fields.length > 1 && (
-//                   <button type="button" onClick={() => remove(idx)} className="text-red-500 hover:text-red-700 shrink-0" aria-label="Remove task">
-//                     <FiTrash2 className="h-4 w-4" />
-//                   </button>
-//                 )}
-//               </div>
-
-//               <div className="flex items-center gap-2 pl-8">
-//                 <input className="input-field flex-1" placeholder="Description (optional)" {...register(`tasks.${idx}.description`)} />
-//                 <input className="input-field w-32 shrink-0" placeholder="Due by" {...register(`tasks.${idx}.expectedCompletion`)} />
-//                 <input className="input-field w-36 shrink-0" placeholder="Remarks (optional)" {...register(`tasks.${idx}.remarks`)} />
-//               </div>
-//             </div>
-//           ))}
-
-//           <div className="card p-3">
-//             <textarea rows={2} className="input-field" placeholder="Overall remarks for today's plan (optional)" {...register('remarks')} />
-//           </div>
-
-//           <div className="flex flex-wrap gap-3 justify-end">
-//             <button type="button" disabled={saving} onClick={handleSubmit((v) => onSave(v, false))} className="btn-secondary">
-//               <FiSave className="h-4 w-4" /> Save Draft
-//             </button>
-//             <button type="button" disabled={saving} onClick={handleSubmit((v) => onSave(v, true))} className="btn-primary">
-//               <FiSend className="h-4 w-4" /> {existingReport ? 'Update Submission' : 'Submit Morning Update'}
-//             </button>
-//           </div>
-//         </form>
-//       )}
-//     </div>
-//   );
-// }
-
-
-
 import {
   useEffect,
   useState,
@@ -1812,11 +1589,19 @@ import { todayISO } from '../../utils/format';
 
 
 /* ============================================================
+   CONSTANTS
+============================================================ */
+
+const MORNING_CUTOFF_HOUR = 9;
+const MORNING_CUTOFF_MINUTE = 40;
+
+
+/* ============================================================
    HELPERS
 ============================================================ */
 
 /**
- * Creates a fresh empty task.
+ * Always return a new task object.
  */
 const emptyTask = () => ({
   _id: '',
@@ -1830,13 +1615,12 @@ const emptyTask = () => ({
 
 
 /**
- * Convert frontend hours -> backend minutes.
+ * Convert hours entered by user to backend minutes.
  *
- * Examples:
- * 1     = 60
- * 1.5   = 90
- * 2     = 120
- * 2.75  = 165
+ * 1      => 60
+ * 1.5    => 90
+ * 2      => 120
+ * 2.75   => 165
  */
 function hoursToMinutes(hours) {
   const value = Number(hours);
@@ -1850,7 +1634,21 @@ function hoursToMinutes(hours) {
 
 
 /**
- * Display friendly hours/minutes.
+ * Convert backend minutes to frontend hours.
+ */
+function minutesToHours(minutes) {
+  const value = Number(minutes);
+
+  if (!Number.isFinite(value) || value <= 0) {
+    return 0;
+  }
+
+  return Number((value / 60).toFixed(2));
+}
+
+
+/**
+ * Display friendly time.
  */
 function hoursHint(hours) {
   const value = Number(hours);
@@ -1877,7 +1675,7 @@ function hoursHint(hours) {
 
 
 /**
- * Check whether selected date is today.
+ * Check selected date is today.
  */
 function isToday(date) {
   return date === todayISO();
@@ -1885,92 +1683,144 @@ function isToday(date) {
 
 
 /**
- * 9:40 AM cutoff.
- *
- * IMPORTANT:
- * We only lock today's morning task editing after
- * 9:40 AM.
- *
- * Past dates are also considered locked.
+ * Check selected date is in the past.
  */
-function isMorningTaskLocked(date) {
-  const now = new Date();
+function isPastDate(date) {
+  if (!date) {
+    return false;
+  }
 
   const selected = new Date(`${date}T00:00:00`);
+  const today = new Date();
 
   if (Number.isNaN(selected.getTime())) {
     return false;
   }
 
-  const today = new Date();
+  selected.setHours(0, 0, 0, 0);
 
-  const selectedYear = selected.getFullYear();
-  const selectedMonth = selected.getMonth();
-  const selectedDay = selected.getDate();
+  today.setHours(0, 0, 0, 0);
 
-  const todayYear = today.getFullYear();
-  const todayMonth = today.getMonth();
-  const todayDay = today.getDate();
+  return selected < today;
+}
 
 
-  // ------------------------------------------------------------
-  // Past date
-  // ------------------------------------------------------------
-
-  if (
-    selectedYear < todayYear ||
-    (
-      selectedYear === todayYear &&
-      selectedMonth < todayMonth
-    ) ||
-    (
-      selectedYear === todayYear &&
-      selectedMonth === todayMonth &&
-      selectedDay < todayDay
-    )
-  ) {
-    return true;
-  }
-
-
-  // ------------------------------------------------------------
-  // Future date
-  // ------------------------------------------------------------
-
-  if (
-    selectedYear > todayYear ||
-    (
-      selectedYear === todayYear &&
-      selectedMonth > todayMonth
-    ) ||
-    (
-      selectedYear === todayYear &&
-      selectedMonth === todayMonth &&
-      selectedDay > todayDay
-    )
-  ) {
+/**
+ * Check selected date is in the future.
+ */
+function isFutureDate(date) {
+  if (!date) {
     return false;
   }
 
+  const selected = new Date(`${date}T00:00:00`);
+  const today = new Date();
 
-  // ------------------------------------------------------------
-  // TODAY
-  // Lock exactly at 9:40 AM.
-  // ------------------------------------------------------------
+  if (Number.isNaN(selected.getTime())) {
+    return false;
+  }
+
+  selected.setHours(0, 0, 0, 0);
+
+  today.setHours(0, 0, 0, 0);
+
+  return selected > today;
+}
+
+
+/**
+ * Morning update becomes locked at exactly 9:40 AM.
+ *
+ * Past dates are always locked.
+ * Future dates are not locked.
+ */
+function isMorningTaskLocked(date) {
+
+  if (isPastDate(date)) {
+    return true;
+  }
+
+  if (isFutureDate(date)) {
+    return false;
+  }
+
+  if (!isToday(date)) {
+    return false;
+  }
+
+  const now = new Date();
 
   const cutoff = new Date();
 
-  cutoff.setHours(9, 40, 0, 0);
+  cutoff.setHours(
+    MORNING_CUTOFF_HOUR,
+    MORNING_CUTOFF_MINUTE,
+    0,
+    0
+  );
 
   return now >= cutoff;
 }
 
 
 /**
- * Format cutoff text.
+ * Return cutoff label.
  */
 function cutoffLabel() {
   return '9:40 AM';
+}
+
+
+/**
+ * Safely extract report from API response.
+ */
+function extractReport(response) {
+  return response?.data?.data?.report || null;
+}
+
+
+/**
+ * Convert backend task to frontend task.
+ */
+function mapTaskFromServer(task) {
+  return {
+    _id: task?._id || '',
+    title: task?.title || '',
+    description: task?.description || '',
+    priority: task?.priority || 'Medium',
+    expectedCompletion:
+      task?.expectedCompletion || '',
+    estimatedTimeHours:
+      minutesToHours(
+        task?.estimatedTimeMinutes
+      ),
+    remarks: task?.remarks || '',
+  };
+}
+
+
+/**
+ * Convert server report to react-hook-form values.
+ */
+function mapReportToForm(report) {
+
+  const tasks =
+    Array.isArray(report?.morning?.tasks)
+      ? report.morning.tasks.map(mapTaskFromServer)
+      : [];
+
+  return {
+    tasks:
+      tasks.length > 0
+        ? tasks
+        : [emptyTask()],
+
+    remarks:
+      report?.morning?.remarks || '',
+
+    lateSubmissionReason:
+      report?.lateSubmissionReason || '',
+  };
 }
 
 
@@ -1982,25 +1832,28 @@ export default function MorningTaskUpdate() {
 
   const [date, setDate] = useState(todayISO());
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] =
+    useState(true);
 
-  const [loadError, setLoadError] = useState(null);
+  const [loadError, setLoadError] =
+    useState(null);
 
   const [existingReport, setExistingReport] =
     useState(null);
 
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] =
+    useState(false);
 
   /**
-   * Forces the cutoff timer to recalculate.
+   * Used to force cutoff recalculation.
    */
   const [lockCheck, setLockCheck] =
     useState(Date.now());
 
 
-  /* ============================================================
+  /* ==========================================================
      FORM
-  ============================================================ */
+  ========================================================== */
 
   const {
     register,
@@ -2009,11 +1862,13 @@ export default function MorningTaskUpdate() {
     reset,
     watch,
   } = useForm({
+
     defaultValues: {
       tasks: [emptyTask()],
       remarks: '',
       lateSubmissionReason: '',
     },
+
   });
 
 
@@ -2027,15 +1882,48 @@ export default function MorningTaskUpdate() {
   });
 
 
-  const watchedTasks = watch('tasks');
+  const watchedTasks =
+    watch('tasks') || [];
 
   const lateSubmissionReason =
-    watch('lateSubmissionReason');
+    watch('lateSubmissionReason') || '';
 
 
-  /* ============================================================
-     LOCK STATUS
-  ============================================================ */
+  /* ==========================================================
+     REPORT STATUS
+  ========================================================== */
+
+  const morningAlreadySubmitted =
+    Boolean(
+      existingReport?.morning?.submittedAt
+    ) ||
+    [
+      'morning_submitted',
+      'evening_submitted',
+      'approved',
+    ].includes(
+      existingReport?.status
+    );
+
+
+  const submittedButEditable =
+    existingReport?.status ===
+    'morning_submitted';
+
+
+  const approvedButEditable =
+    existingReport?.status ===
+    'approved';
+
+
+  const reopenedForEdit =
+    existingReport?.status ===
+    'evening_submitted';
+
+
+  /* ==========================================================
+     LOCK STATE
+  ========================================================== */
 
   const morningLocked = useMemo(() => {
 
@@ -2043,56 +1931,56 @@ export default function MorningTaskUpdate() {
 
     return isMorningTaskLocked(date);
 
-  }, [date, lockCheck]);
+  }, [
+    date,
+    lockCheck,
+  ]);
 
 
   /**
-   * Late submission is allowed ONLY for today's
-   * 9:40 AM cutoff.
-   *
-   * For past dates we keep the form locked and do
-   * not offer late submission.
+   * Late submission is ONLY applicable to today.
    */
   const lateSubmissionAllowed =
+    isToday(date) &&
     morningLocked &&
-    isToday(date);
+    morningAlreadySubmitted;
 
 
   /**
-   * Already-submitted morning plans remain editable.
-   * This also allows the employee to add/edit tasks after 9:40 AM,
-   * provided the morning plan was already submitted.
+   * User can edit an existing submitted plan
+   * after 9:40 AM.
    *
-   * A brand-new plan is still locked after 9:40 AM and past dates
-   * remain locked.
+   * New plan cannot be created after cutoff.
    */
-  const morningAlreadySubmitted =
-    Boolean(existingReport?.morning?.submittedAt) ||
-    [
-      'morning_submitted',
-      'evening_submitted',
-      'approved',
-    ].includes(existingReport?.status);
-
   const canEditTasks =
     !morningLocked ||
-    (isToday(date) && morningAlreadySubmitted);
+    (
+      isToday(date) &&
+      morningAlreadySubmitted
+    );
 
+
+  /**
+   * Draft is allowed only before cutoff.
+   */
   const canSaveDraft =
     !morningLocked;
 
 
-  /* ============================================================
-     KEEP CLOCK UPDATED
-  ============================================================ */
+  /* ==========================================================
+     CUTOFF TIMER
+  ========================================================== */
 
   useEffect(() => {
 
-    const interval = setInterval(() => {
+    const interval =
+      setInterval(() => {
 
-      setLockCheck(Date.now());
+        setLockCheck(
+          Date.now()
+        );
 
-    }, 30000);
+      }, 30000);
 
     return () => {
       clearInterval(interval);
@@ -2101,9 +1989,9 @@ export default function MorningTaskUpdate() {
   }, []);
 
 
-  /* ============================================================
+  /* ==========================================================
      LOAD DAY
-  ============================================================ */
+  ========================================================== */
 
   const loadDay = useCallback(
     async (selectedDate) => {
@@ -2114,7 +2002,7 @@ export default function MorningTaskUpdate() {
 
       try {
 
-        const { data: res } =
+        const response =
           await axiosClient.get(
             '/tasks/day',
             {
@@ -2124,91 +2012,30 @@ export default function MorningTaskUpdate() {
             }
           );
 
+
         const report =
-          res?.data?.report || null;
+          extractReport(response);
+
 
         setExistingReport(report);
 
 
-        if (
-          report &&
-          report.morning &&
-          Array.isArray(
-            report.morning.tasks
-          ) &&
-          report.morning.tasks.length > 0
-        ) {
-
-          reset({
-
-            tasks:
-              report.morning.tasks.map(
-                (task) => ({
-
-                  _id:
-                    task._id || '',
-
-                  title:
-                    task.title || '',
-
-                  description:
-                    task.description || '',
-
-                  priority:
-                    task.priority ||
-                    'Medium',
-
-                  expectedCompletion:
-                    task.expectedCompletion ||
-                    '',
-
-                  /**
-                   * Database stores minutes.
-                   * UI displays hours.
-                   */
-                  estimatedTimeHours:
-                    Number(
-                      task.estimatedTimeMinutes ||
-                      0
-                    ) / 60,
-
-                  remarks:
-                    task.remarks || '',
-
-                })
-              ),
-
-            remarks:
-              report.morning.remarks ||
-              '',
-
-            lateSubmissionReason:
-              report.lateSubmissionReason ||
-              '',
-
-          });
-
-        } else {
-
-          reset({
-
-            tasks: [
-              emptyTask(),
-            ],
-
-            remarks: '',
-
-            lateSubmissionReason: '',
-
-          });
-
-        }
+        reset(
+          mapReportToForm(report)
+        );
 
       } catch (err) {
 
+        console.error(
+          'Load morning tasks error:',
+          err
+        );
+
+
         const message =
-          err.response?.data?.message ||
+          err?.response?.data?.message ||
           'Failed to load tasks for this date.';
+
 
         setLoadError(message);
 
@@ -2229,180 +2056,310 @@ export default function MorningTaskUpdate() {
 
     loadDay(date);
 
-  }, [date, loadDay]);
+  }, [
+    date,
+    loadDay,
+  ]);
 
 
-  /* ============================================================
-     REPORT STATUS
-  ============================================================ */
+  /* ==========================================================
+     TASK VALIDATION
+  ========================================================== */
 
-  const submittedButEditable =
-    existingReport?.status ===
-    'morning_submitted';
+  const getValidTasks = useCallback(
+    (values) => {
 
+      return (
+        values?.tasks || []
+      ).filter((task) => {
 
-  const approvedButEditable =
-    existingReport?.status ===
-    'approved';
+        const title =
+          String(
+            task?.title || ''
+          ).trim();
 
-
-  const reopenedForEdit =
-    existingReport?.status ===
-    'evening_submitted';
-
-
-  /* ============================================================
-     VALIDATE TASKS
-  ============================================================ */
-
-  const getValidTasks = (values) => {
-    return (values?.tasks || [])
-      .filter((task) => {
-        const title = String(task?.title || '').trim();
-        const hours = Number(task?.estimatedTimeHours);
+        const hours =
+          Number(
+            task?.estimatedTimeHours
+          );
 
         return (
           title.length > 0 &&
           Number.isFinite(hours) &&
-          hours > 0 &&
+          hours >= 0.25 &&
           hours <= 24
         );
+
       });
-  };
+
+    },
+    []
+  );
 
 
-  const validateTasks = (values) => {
-    const validTasks = getValidTasks(values);
+  const validateTasks = useCallback(
+    (values) => {
 
-    if (validTasks.length === 0) {
-      toast.error(
-        'Please add at least one valid task with a title and estimated time.'
-      );
-      return false;
-    }
+      const tasks =
+        values?.tasks || [];
 
-    return true;
-  };
+      if (tasks.length === 0) {
+
+        toast.error(
+          'Please add at least one task.'
+        );
+
+        return false;
+
+      }
 
 
-  /* ============================================================
+      const validTasks =
+        getValidTasks(values);
+
+
+      if (validTasks.length === 0) {
+
+        toast.error(
+          'Please add at least one valid task with a title and estimated time.'
+        );
+
+        return false;
+
+      }
+
+
+      /**
+       * Detect partially filled task rows.
+       */
+      const invalidRow =
+        tasks.some((task) => {
+
+          const title =
+            String(
+              task?.title || ''
+            ).trim();
+
+          const hoursValue =
+            String(
+              task?.estimatedTimeHours ?? ''
+            ).trim();
+
+          /**
+           * Completely empty rows are allowed because
+           * they are ignored.
+           */
+          if (
+            !title &&
+            !hoursValue
+          ) {
+            return false;
+          }
+
+          const hours =
+            Number(
+              task?.estimatedTimeHours
+            );
+
+          /**
+           * If title exists, hours must exist.
+           */
+          if (
+            title &&
+            (
+              !Number.isFinite(hours) ||
+              hours < 0.25 ||
+              hours > 24
+            )
+          ) {
+            return true;
+          }
+
+          /**
+           * If hours exists, title must exist.
+           */
+          if (
+            !title &&
+            hoursValue
+          ) {
+            return true;
+          }
+
+          return false;
+
+        });
+
+
+      if (invalidRow) {
+
+        toast.error(
+          'Please complete every partially filled task with a title and valid estimated hours.'
+        );
+
+        return false;
+
+      }
+
+
+      return true;
+
+    },
+    [getValidTasks]
+  );
+
+
+  /* ==========================================================
      VALIDATE BEFORE SAVE / SUBMIT
-  ============================================================ */
+  ========================================================== */
 
-  const validateBeforeSave = (
-    values,
-    submit
-  ) => {
+  const validateBeforeSave =
+    useCallback(
+      (values, submit) => {
 
+        /**
+         * ------------------------------------------------------
+         * PAST DATE
+         * ------------------------------------------------------
+         */
 
-    /**
-     * ----------------------------------------------------------
-     * LATE SUBMISSION
-     * ----------------------------------------------------------
-     *
-     * This is the IMPORTANT FIX.
-     *
-     * Previously the code did:
-     *
-     * if (morningLocked) return false;
-     *
-     * That meant the late submit could NEVER work.
-     *
-     * Now:
-     *
-     * - Save Draft after 9:40 => blocked
-     * - Previously submitted plans can be edited after 9:40
-     * - Submit after 9:40 => allowed WITH reason
-     * - Brand-new plans cannot be created after 9:40
-     */
+        if (isPastDate(date)) {
 
-    if (morningLocked) {
+          toast.error(
+            'Morning updates are locked for past dates.'
+          );
 
-      if (!submit) {
+          return false;
 
-        toast.error(
-          `Changes made after ${cutoffLabel()} must be submitted with a late-submission reason.`
-        );
-
-        return false;
-
-      }
+        }
 
 
-      if (!lateSubmissionAllowed) {
+        /**
+         * ------------------------------------------------------
+         * FUTURE DATE
+         * ------------------------------------------------------
+         */
 
-        toast.error(
-          'Late submission is not available for this date.'
-        );
+        if (isFutureDate(date)) {
 
-        return false;
+          toast.error(
+            'Morning tasks cannot be entered for a future date.'
+          );
 
-      }
+          return false;
 
-
-      if (!morningAlreadySubmitted) {
-
-        toast.error(
-          `A new morning plan cannot be created after ${cutoffLabel()}.`
-        );
-
-        return false;
-
-      }
+        }
 
 
-      const reason =
-        String(
-          values.lateSubmissionReason ||
-          ''
-        ).trim();
+        /**
+         * ------------------------------------------------------
+         * AFTER 9:40 AM
+         * ------------------------------------------------------
+         */
+
+        if (morningLocked) {
+
+          /**
+           * Draft is NEVER allowed after cutoff.
+           */
+          if (!submit) {
+
+            toast.error(
+              `Save Draft is unavailable after ${cutoffLabel()}.`
+            );
+
+            return false;
+
+          }
 
 
-      if (!reason) {
+          /**
+           * Late submission is only for
+           * an already-submitted morning plan.
+           */
+          if (
+            !lateSubmissionAllowed
+          ) {
 
-        toast.error(
-          `Please provide a reason for the late submission after ${cutoffLabel()}.`
-        );
+            toast.error(
+              `A new morning plan cannot be created after ${cutoffLabel()}.`
+            );
 
-        return false;
+            return false;
 
-      }
-
-
-      if (reason.length < 5) {
-
-        toast.error(
-          'Late submission reason must contain at least 5 characters.'
-        );
-
-        return false;
-
-      }
-
-    }
+          }
 
 
-    /**
-     * Validate task data.
-     */
-    if (!validateTasks(values)) {
-      return false;
-    }
+          const reason =
+            String(
+              values?.lateSubmissionReason ||
+              ''
+            ).trim();
 
 
-    return true;
+          if (!reason) {
 
-  };
+            toast.error(
+              `Please provide a reason for the late submission after ${cutoffLabel()}.`
+            );
+
+            return false;
+
+          }
 
 
-  /* ============================================================
+          if (reason.length < 5) {
+
+            toast.error(
+              'Late submission reason must contain at least 5 characters.'
+            );
+
+            return false;
+
+          }
+
+        }
+
+
+        /**
+         * ------------------------------------------------------
+         * TASK VALIDATION
+         * ------------------------------------------------------
+         */
+
+        if (
+          !validateTasks(values)
+        ) {
+
+          return false;
+
+        }
+
+
+        return true;
+
+      },
+      [
+        date,
+        morningLocked,
+        lateSubmissionAllowed,
+        validateTasks,
+      ]
+    );
+
+
+  /* ==========================================================
      SAVE / SUBMIT
-  ============================================================ */
+  ========================================================== */
 
   const onSave = async (
     values,
     submit
   ) => {
+
+    if (saving) {
+      return;
+    }
+
 
     if (
       !validateBeforeSave(
@@ -2420,48 +2377,113 @@ export default function MorningTaskUpdate() {
     try {
 
       /**
-       * Convert frontend hours -> backend minutes.
-       * Blank placeholder rows are never sent to the API.
+       * Remove empty placeholder rows.
        */
-      const validTasks = getValidTasks(values);
+      const validTasks =
+        getValidTasks(values);
 
-      const formattedTasks = validTasks.map((task) => ({
-        _id: task._id || undefined,
-        title: String(task.title).trim(),
-        description: task.description || '',
-        priority: task.priority || 'Medium',
-        expectedCompletion: task.expectedCompletion || '',
-        estimatedTimeMinutes: hoursToMinutes(
-          task.estimatedTimeHours
-        ),
-        remarks: task.remarks || '',
-      }));
 
-      if (formattedTasks.length === 0) {
+      /**
+       * Convert frontend hours
+       * to backend minutes.
+       */
+      const formattedTasks =
+        validTasks.map((task) => ({
+
+          ...(task?._id
+            ? {
+                _id: task._id,
+              }
+            : {}),
+
+          title:
+            String(
+              task.title || ''
+            ).trim(),
+
+          description:
+            String(
+              task.description || ''
+            ).trim(),
+
+          priority:
+            task.priority ||
+            'Medium',
+
+          expectedCompletion:
+            String(
+              task.expectedCompletion ||
+              ''
+            ).trim(),
+
+          estimatedTimeMinutes:
+            hoursToMinutes(
+              task.estimatedTimeHours
+            ),
+
+          remarks:
+            String(
+              task.remarks || ''
+            ).trim(),
+
+        }));
+
+
+      if (
+        formattedTasks.length === 0
+      ) {
+
         toast.error(
-          'Please add at least one valid task with a title and estimated time.'
+          'Please add at least one valid task.'
         );
+
         return;
+
       }
 
-      const lateReason = lateSubmissionAllowed
-        ? String(values.lateSubmissionReason || '').trim()
-        : '';
 
-      const { data: res } = await axiosClient.post(
-        '/tasks/morning',
-        {
-          date,
-          tasks: formattedTasks,
-          remarks: values.remarks || '',
-          lateSubmissionReason: lateReason,
-          submit,
-        }
-      );
+      /**
+       * Late reason is only sent when
+       * late submission is actually applicable.
+       */
+      const lateReason =
+        lateSubmissionAllowed
+          ? String(
+              values?.lateSubmissionReason ||
+              ''
+            ).trim()
+          : '';
+
+
+      const payload = {
+
+        date,
+
+        tasks:
+          formattedTasks,
+
+        remarks:
+          String(
+            values?.remarks || ''
+          ).trim(),
+
+        lateSubmissionReason:
+          lateReason,
+
+        submit,
+
+      };
+
+
+      const response =
+        await axiosClient.post(
+          '/tasks/morning',
+          payload
+        );
 
 
       const report =
-        res?.data?.report;
+        extractReport(response);
 
 
       if (!report) {
@@ -2473,75 +2495,50 @@ export default function MorningTaskUpdate() {
       }
 
 
-      setExistingReport(report);
+      /**
+       * Update local report.
+       */
+      setExistingReport(
+        report
+      );
 
 
       /**
-       * Load server values back into form.
+       * Reload server values into form.
        */
-      reset({
-
-        tasks:
-          (
-            report.morning?.tasks ||
-            []
-          ).map(
-            (task) => ({
-
-              _id:
-                task._id ||
-                '',
-
-              title:
-                task.title ||
-                '',
-
-              description:
-                task.description ||
-                '',
-
-              priority:
-                task.priority ||
-                'Medium',
-
-              expectedCompletion:
-                task.expectedCompletion ||
-                '',
-
-              estimatedTimeHours:
-                Number(
-                  task.estimatedTimeMinutes ||
-                  0
-                ) / 60,
-
-              remarks:
-                task.remarks ||
-                '',
-
-            })
-          ),
-
-        remarks:
-          report.morning?.remarks ||
-          '',
-
-        lateSubmissionReason:
-          report.lateSubmissionReason ||
-          '',
-
-      });
-
-
-      toast.success(
-        submit
-          ? (
-              lateSubmissionAllowed
-                ? 'Late morning update submitted successfully!'
-                : 'Morning tasks submitted successfully!'
-            )
-          : 'Draft saved successfully.'
+      reset(
+        mapReportToForm(report)
       );
 
+
+      /**
+       * Success message.
+       */
+      if (submit) {
+
+        if (
+          lateSubmissionAllowed
+        ) {
+
+          toast.success(
+            'Late morning update submitted successfully!'
+          );
+
+        } else {
+
+          toast.success(
+            'Morning tasks submitted successfully!'
+          );
+
+        }
+
+      } else {
+
+        toast.success(
+          'Draft saved successfully!'
+        );
+
+      }
 
     } catch (err) {
 
@@ -2550,11 +2547,47 @@ export default function MorningTaskUpdate() {
         err
       );
 
-      toast.error(
-        err.response?.data?.message ||
-        err.message ||
-        'Could not save morning tasks.'
-      );
+
+      /**
+       * Handle common backend errors.
+       */
+      const status =
+        err?.response?.status;
+
+
+      const message =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Could not save morning tasks.';
+
+
+      if (status === 401) {
+
+        toast.error(
+          'Your session has expired. Please login again.'
+        );
+
+      } else if (status === 403) {
+
+        toast.error(
+          message ||
+          'You are not allowed to update this morning report.'
+        );
+
+      } else if (status === 409) {
+
+        toast.error(
+          message ||
+          'This morning report was changed. Please reload the page.'
+        );
+
+      } else {
+
+        toast.error(
+          message
+        );
+
+      }
 
     } finally {
 
@@ -2565,18 +2598,19 @@ export default function MorningTaskUpdate() {
   };
 
 
-  /* ============================================================
+  /* ==========================================================
      TASK COUNT
-  ============================================================ */
+  ========================================================== */
 
-  const totalTasks = getValidTasks({
-    tasks: watchedTasks,
-  }).length;
+  const totalTasks =
+    getValidTasks({
+      tasks: watchedTasks,
+    }).length;
 
 
-  /* ============================================================
-     RENDER
-  ============================================================ */
+  /* ==========================================================
+     UI
+  ========================================================== */
 
   return (
 
@@ -2618,7 +2652,7 @@ export default function MorningTaskUpdate() {
 
 
         {/* ====================================================
-            CUTOFF MESSAGE
+            TODAY CUTOFF
         ==================================================== */}
 
         {isToday(date) && (
@@ -2626,14 +2660,24 @@ export default function MorningTaskUpdate() {
           <div
             className={`mt-3 p-3 rounded-lg border flex items-start gap-2 text-sm ${
               morningLocked
-                ? 'bg-red-50 border-red-200 text-red-700'
+                ? lateSubmissionAllowed
+                  ? 'bg-amber-50 border-amber-200 text-amber-700'
+                  : 'bg-red-50 border-red-200 text-red-700'
                 : 'bg-blue-50 border-blue-200 text-blue-700'
             }`}
           >
 
             {morningLocked ? (
 
-              <FiLock className="h-4 w-4 mt-0.5 shrink-0" />
+              lateSubmissionAllowed ? (
+
+                <FiAlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+
+              ) : (
+
+                <FiLock className="h-4 w-4 mt-0.5 shrink-0" />
+
+              )
 
             ) : (
 
@@ -2649,15 +2693,7 @@ export default function MorningTaskUpdate() {
               </p>
 
 
-              {morningLocked ? (
-
-                <p className="mt-0.5">
-                  {morningAlreadySubmitted
-                    ? 'This morning update was already submitted. You can edit or add tasks now, then re-submit the updated plan with a reason for the late change.'
-                    : 'Morning task fields are locked because the 9:40 AM deadline has passed. A new morning plan cannot be created after the cutoff.'}
-                </p>
-
-              ) : (
+              {!morningLocked && (
 
                 <p className="mt-0.5">
                   You can add, edit and submit morning
@@ -2665,6 +2701,29 @@ export default function MorningTaskUpdate() {
                 </p>
 
               )}
+
+
+              {morningLocked &&
+                lateSubmissionAllowed && (
+
+                  <p className="mt-0.5">
+                    Your morning update was already submitted.
+                    You can edit or add tasks, but changes
+                    must be submitted with a late-submission reason.
+                  </p>
+
+                )}
+
+
+              {morningLocked &&
+                !lateSubmissionAllowed && (
+
+                  <p className="mt-0.5">
+                    The 9:40 AM cutoff has passed.
+                    A new morning plan cannot be created today.
+                  </p>
+
+                )}
 
             </div>
 
@@ -2716,10 +2775,11 @@ export default function MorningTaskUpdate() {
 
               <FiCheckCircle className="h-4 w-4 shrink-0" />
 
-              Submitted for review.
-              You can still edit tasks or add more.
-              After 9:40 AM, re-submit changes with
-              a late-submission reason.
+              <span>
+                Morning update submitted for review.
+                You can still edit tasks or add more.
+                After 9:40 AM, changes require a late-submission reason.
+              </span>
 
             </div>
 
@@ -2727,7 +2787,7 @@ export default function MorningTaskUpdate() {
 
 
           {/* ==================================================
-              APPROVED / EVENING MESSAGE
+              APPROVED / EVENING
           ================================================== */}
 
           {(
@@ -2739,10 +2799,41 @@ export default function MorningTaskUpdate() {
 
               <FiCheckCircle className="h-4 w-4 shrink-0" />
 
-              {approvedButEditable
-                ? 'This was already approved. Editing and resubmitting sends it back for review.'
-                : 'Evening tasks were already submitted for this day. Editing the plan sends it back for review.'
-              }
+              <span>
+
+                {approvedButEditable
+                  ? 'This morning plan was already approved. Editing and resubmitting sends it back for review.'
+                  : 'Evening tasks were already submitted. Editing this plan sends it back for review.'
+                }
+
+              </span>
+
+            </div>
+
+          )}
+
+
+          {/* ==================================================
+              PAST DATE
+          ================================================== */}
+
+          {isPastDate(date) && (
+
+            <div className="card p-4 bg-gray-50 border border-gray-200 flex items-start gap-2 text-sm text-gray-600">
+
+              <FiLock className="h-4 w-4 mt-0.5 shrink-0" />
+
+              <div>
+
+                <p className="font-semibold">
+                  Morning update locked
+                </p>
+
+                <p className="mt-0.5">
+                  Morning task entry is locked for past dates.
+                </p>
+
+              </div>
 
             </div>
 
@@ -2796,219 +2887,208 @@ export default function MorningTaskUpdate() {
           {fields.map(
             (field, idx) => (
 
-            <div
-              key={field.id}
-              className="card p-3 space-y-2 relative"
-            >
-
-              <input
-                type="hidden"
-                {...register(
-                  `tasks.${idx}._id`
-                )}
-              />
-
-
-              {/* ================================================
-                  MAIN ROW
-              ================================================= */}
-
-              <div className="flex items-center gap-2">
-
-                <span className="text-xs font-semibold text-navy-400 shrink-0 w-6">
-                  #{idx + 1}
-                </span>
-
-
-                {/* TITLE */}
+              <div
+                key={field.id}
+                className="card p-3 space-y-2 relative"
+              >
 
                 <input
-                  readOnly={!canEditTasks}
-                  className={`input-field flex-1 ${
-                    !canEditTasks
-                      ? 'bg-gray-100 cursor-not-allowed'
-                      : ''
-                  }`}
-                  placeholder="Task title, e.g. Develop login API"
+                  type="hidden"
                   {...register(
-                    `tasks.${idx}.title`,
-                    {
-                      required: true,
-                    }
+                    `tasks.${idx}._id`
                   )}
                 />
 
 
-                {/* PRIORITY */}
+                {/* ============================================
+                    MAIN ROW
+                ============================================ */}
 
-                <select
-                  className={`input-field w-28 shrink-0 ${
-                    !canEditTasks
-                      ? 'bg-gray-100 cursor-not-allowed pointer-events-none'
-                      : ''
-                  }`}
-                  tabIndex={
-                    canEditTasks
-                      ? 0
-                      : -1
-                  }
-                  {...register(
-                    `tasks.${idx}.priority`
-                  )}
-                >
+                <div className="flex items-center gap-2">
 
-                  <option>
-                    Low
-                  </option>
-
-                  <option>
-                    Medium
-                  </option>
-
-                  <option>
-                    High
-                  </option>
-
-                  <option>
-                    Urgent
-                  </option>
-
-                </select>
+                  <span className="text-xs font-semibold text-navy-400 shrink-0 w-6">
+                    #{idx + 1}
+                  </span>
 
 
-                {/* HOURS */}
+                  {/* TITLE */}
 
-                <div className="shrink-0">
-
-                  <div className="relative">
-
-                    <input
-                      type="number"
-                      min="0.25"
-                      max="24"
-                      step="0.25"
-                      readOnly={!canEditTasks}
-                      title="Estimated hours"
-                      className={`input-field w-28 pr-12 ${
-                        !canEditTasks
-                          ? 'bg-gray-100 cursor-not-allowed'
-                          : ''
-                      }`}
-                      placeholder="Hours"
-                      {...register(
-                        `tasks.${idx}.estimatedTimeHours`,
-                        {
-                          required: true,
-                          min: 0.25,
-                        }
-                      )}
-                    />
+                  <input
+                    readOnly={!canEditTasks}
+                    className={`input-field flex-1 ${
+                      !canEditTasks
+                        ? 'bg-gray-100 cursor-not-allowed'
+                        : ''
+                    }`}
+                    placeholder="Task title, e.g. Develop login API"
+                    {...register(
+                      `tasks.${idx}.title`
+                    )}
+                  />
 
 
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-navy-400 pointer-events-none">
-                      hrs
-                    </span>
+                  {/* PRIORITY */}
+
+                  <select
+                    disabled={!canEditTasks}
+                    className={`input-field w-28 shrink-0 ${
+                      !canEditTasks
+                        ? 'bg-gray-100 cursor-not-allowed'
+                        : ''
+                    }`}
+                    {...register(
+                      `tasks.${idx}.priority`
+                    )}
+                  >
+
+                    <option value="Low">
+                      Low
+                    </option>
+
+                    <option value="Medium">
+                      Medium
+                    </option>
+
+                    <option value="High">
+                      High
+                    </option>
+
+                    <option value="Urgent">
+                      Urgent
+                    </option>
+
+                  </select>
+
+
+                  {/* HOURS */}
+
+                  <div className="shrink-0">
+
+                    <div className="relative">
+
+                      <input
+                        type="number"
+                        min="0.25"
+                        max="24"
+                        step="0.25"
+                        readOnly={!canEditTasks}
+                        title="Estimated hours"
+                        className={`input-field w-28 pr-12 ${
+                          !canEditTasks
+                            ? 'bg-gray-100 cursor-not-allowed'
+                            : ''
+                        }`}
+                        placeholder="Hours"
+                        {...register(
+                          `tasks.${idx}.estimatedTimeHours`
+                        )}
+                      />
+
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-navy-400 pointer-events-none">
+                        hrs
+                      </span>
+
+                    </div>
+
+
+                    {hoursHint(
+                      watchedTasks?.[idx]
+                        ?.estimatedTimeHours
+                    ) && (
+
+                      <p className="text-[11px] text-navy-400 mt-0.5 text-center">
+
+                        {hoursHint(
+                          watchedTasks[idx]
+                            .estimatedTimeHours
+                        )}
+
+                      </p>
+
+                    )}
 
                   </div>
 
 
-                  {hoursHint(
-                    watchedTasks?.[idx]
-                      ?.estimatedTimeHours
-                  ) && (
+                  {/* DELETE */}
 
-                    <p className="text-[11px] text-navy-400 mt-0.5 text-center">
+                  {fields.length > 1 && (
 
-                      {hoursHint(
-                        watchedTasks[idx]
-                          .estimatedTimeHours
-                      )}
+                    <button
+                      type="button"
+                      disabled={
+                        !canEditTasks ||
+                        saving
+                      }
+                      onClick={() =>
+                        remove(idx)
+                      }
+                      className="text-red-500 hover:text-red-700 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                      aria-label="Remove task"
+                    >
 
-                    </p>
+                      <FiTrash2 className="h-4 w-4" />
+
+                    </button>
 
                   )}
 
                 </div>
 
 
-                {/* DELETE */}
+                {/* ============================================
+                    SECONDARY ROW
+                ============================================ */}
 
-                {fields.length > 1 && (
+                <div className="flex items-center gap-2 pl-8">
 
-                  <button
-                    type="button"
-                    disabled={
-                      !canEditTasks ||
-                      saving
-                    }
-                    onClick={() =>
-                      remove(idx)
-                    }
-                    className="text-red-500 hover:text-red-700 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
-                    aria-label="Remove task"
-                  >
-
-                    <FiTrash2 className="h-4 w-4" />
-
-                  </button>
-
-                )}
-
-              </div>
+                  <input
+                    readOnly={!canEditTasks}
+                    className={`input-field flex-1 ${
+                      !canEditTasks
+                        ? 'bg-gray-100 cursor-not-allowed'
+                        : ''
+                    }`}
+                    placeholder="Description (optional)"
+                    {...register(
+                      `tasks.${idx}.description`
+                    )}
+                  />
 
 
-              {/* ================================================
-                  SECONDARY FIELDS
-              ================================================= */}
-
-              <div className="flex items-center gap-2 pl-8">
-
-                <input
-                  readOnly={!canEditTasks}
-                  className={`input-field flex-1 ${
-                    !canEditTasks
-                      ? 'bg-gray-100 cursor-not-allowed'
-                      : ''
-                  }`}
-                  placeholder="Description (optional)"
-                  {...register(
-                    `tasks.${idx}.description`
-                  )}
-                />
+                  <input
+                    readOnly={!canEditTasks}
+                    className={`input-field w-32 shrink-0 ${
+                      !canEditTasks
+                        ? 'bg-gray-100 cursor-not-allowed'
+                        : ''
+                    }`}
+                    placeholder="Due by"
+                    {...register(
+                      `tasks.${idx}.expectedCompletion`
+                    )}
+                  />
 
 
-                <input
-                  readOnly={!canEditTasks}
-                  className={`input-field w-32 shrink-0 ${
-                    !canEditTasks
-                      ? 'bg-gray-100 cursor-not-allowed'
-                      : ''
-                  }`}
-                  placeholder="Due by"
-                  {...register(
-                    `tasks.${idx}.expectedCompletion`
-                  )}
-                />
+                  <input
+                    readOnly={!canEditTasks}
+                    className={`input-field w-36 shrink-0 ${
+                      !canEditTasks
+                        ? 'bg-gray-100 cursor-not-allowed'
+                        : ''
+                    }`}
+                    placeholder="Remarks (optional)"
+                    {...register(
+                      `tasks.${idx}.remarks`
+                    )}
+                  />
 
-
-                <input
-                  readOnly={!canEditTasks}
-                  className={`input-field w-36 shrink-0 ${
-                    !canEditTasks
-                      ? 'bg-gray-100 cursor-not-allowed'
-                      : ''
-                  }`}
-                  placeholder="Remarks (optional)"
-                  {...register(
-                    `tasks.${idx}.remarks`
-                  )}
-                />
+                </div>
 
               </div>
 
-            </div>
-
-          ))}
+            )
+          )}
 
 
           {/* ==================================================
@@ -3033,7 +3113,7 @@ export default function MorningTaskUpdate() {
 
 
           {/* ==================================================
-              LATE SUBMISSION REASON
+              LATE SUBMISSION
           ================================================== */}
 
           {lateSubmissionAllowed && (
@@ -3050,6 +3130,7 @@ export default function MorningTaskUpdate() {
                   <label className="block text-sm font-semibold text-amber-800 mb-1">
 
                     Reason for Late Submission
+
                     <span className="text-red-600 ml-1">
                       *
                     </span>
@@ -3060,9 +3141,8 @@ export default function MorningTaskUpdate() {
                   <p className="text-xs text-amber-700 mb-2">
 
                     The 9:40 AM deadline has passed.
-                    {morningAlreadySubmitted
-                      ? 'You can edit or add tasks because this morning update was already submitted. Enter a reason to re-submit the changes.'
-                      : 'A new morning plan cannot be created after the cutoff.'}
+                    Explain why you are changing or
+                    re-submitting the morning plan.
 
                   </p>
 
@@ -3078,8 +3158,7 @@ export default function MorningTaskUpdate() {
 
 
                   {!String(
-                    lateSubmissionReason ||
-                    ''
+                    lateSubmissionReason
                   ).trim() && (
 
                     <p className="text-xs text-red-500 mt-1">
@@ -3099,45 +3178,30 @@ export default function MorningTaskUpdate() {
           )}
 
 
-          {lateSubmissionAllowed && totalTasks === 0 && (
-            <div className="card p-4 bg-red-50 border border-red-200 text-sm text-red-700">
-              <p className="font-semibold">No morning plan exists for today.</p>
-              <p className="mt-1">
-                Because the 9:40 AM cutoff has passed, new morning tasks cannot be created here.
-                Please contact your Team Lead/Admin for a late morning update.
-              </p>
-            </div>
-          )}
-
-
           {/* ==================================================
-              PAST DATE MESSAGE
+              NO PLAN AFTER CUTOFF
           ================================================== */}
 
-          {morningLocked &&
-            !isToday(date) && (
+          {isToday(date) &&
+            morningLocked &&
+            !morningAlreadySubmitted && (
 
-            <div className="card p-4 bg-gray-50 border border-gray-200 flex items-start gap-2 text-sm text-gray-600">
-
-              <FiLock className="h-4 w-4 mt-0.5 shrink-0" />
-
-              <div>
+              <div className="card p-4 bg-red-50 border border-red-200 text-sm text-red-700">
 
                 <p className="font-semibold">
-                  Morning update locked
+                  No morning plan was submitted.
                 </p>
 
-                <p className="mt-0.5">
-                  Morning task entry is locked for
-                  past dates.
-
+                <p className="mt-1">
+                  The 9:40 AM cutoff has passed, so a new
+                  morning plan cannot be created from this page.
+                  Please contact your Team Lead/Admin for
+                  a late morning update.
                 </p>
 
               </div>
 
-            </div>
-
-          )}
+            )}
 
 
           {/* ==================================================
@@ -3179,13 +3243,13 @@ export default function MorningTaskUpdate() {
               disabled={
                 saving ||
                 totalTasks === 0 ||
+                !canEditTasks ||
                 (
                   morningLocked &&
                   (
                     !lateSubmissionAllowed ||
                     !String(
-                      lateSubmissionReason ||
-                      ''
+                      lateSubmissionReason
                     ).trim()
                   )
                 )
@@ -3203,25 +3267,12 @@ export default function MorningTaskUpdate() {
               <FiSend className="h-4 w-4" />
 
 
-              {lateSubmissionAllowed ? (
-
-                <>
-                  Submit Late Morning Update
-                </>
-
-              ) : existingReport ? (
-
-                <>
-                  Update Submission
-                </>
-
-              ) : (
-
-                <>
-                  Submit Morning Update
-                </>
-
-              )}
+              {lateSubmissionAllowed
+                ? 'Submit Late Morning Update'
+                : existingReport
+                  ? 'Update Submission'
+                  : 'Submit Morning Update'
+              }
 
             </button>
 
