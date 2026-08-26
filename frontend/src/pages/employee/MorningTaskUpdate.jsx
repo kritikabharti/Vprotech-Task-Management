@@ -5369,32 +5369,15 @@ export default function MorningTaskUpdate() {
                   ================================================= */}
 
                   <textarea
-                    rows={3}
-                    value={
-                      lateSubmissionReason
-                    }
-                    onChange={(e) => {
-
-                      const value =
-                        e.target.value;
-
-                      /**
-                       * Update react-hook-form manually.
-                       */
-                      e.target.value =
-                        value;
-
-                    }}
-                    className={`input-field bg-white ${
-                      displayedLateReason
-                        ? 'border-green-400'
-                        : ''
-                    }`}
-                    placeholder="Example: Late start due to unexpected internet connectivity issue."
-                    {...register(
-                      'lateSubmissionReason'
-                    )}
-                  />
+  rows={3}
+  className={`input-field bg-white ${
+    displayedLateReason
+      ? 'border-green-400'
+      : ''
+  }`}
+  placeholder="Example: Late start due to unexpected internet connectivity issue."
+  {...register('lateSubmissionReason')}
+/>
 
 
                   {/* =================================================
