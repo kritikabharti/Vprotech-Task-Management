@@ -3629,9 +3629,6 @@ const MORNING_CUTOFF_MINUTE = 40;
    HELPERS
 ============================================================ */
 
-/**
- * Always return a new task object.
- */
 const emptyTask = () => ({
   _id: '',
   title: '',
@@ -3643,9 +3640,6 @@ const emptyTask = () => ({
 });
 
 
-/**
- * Convert hours to backend minutes.
- */
 function hoursToMinutes(hours) {
   const value = Number(hours);
 
@@ -3657,9 +3651,6 @@ function hoursToMinutes(hours) {
 }
 
 
-/**
- * Convert backend minutes to frontend hours.
- */
 function minutesToHours(minutes) {
   const value = Number(minutes);
 
@@ -3671,9 +3662,6 @@ function minutesToHours(minutes) {
 }
 
 
-/**
- * Display friendly time.
- */
 function hoursHint(hours) {
   const value = Number(hours);
 
@@ -3698,17 +3686,11 @@ function hoursHint(hours) {
 }
 
 
-/**
- * Check selected date is today.
- */
 function isToday(date) {
   return date === todayISO();
 }
 
 
-/**
- * Check selected date is in the past.
- */
 function isPastDate(date) {
   if (!date) {
     return false;
@@ -3728,9 +3710,6 @@ function isPastDate(date) {
 }
 
 
-/**
- * Check selected date is in the future.
- */
 function isFutureDate(date) {
   if (!date) {
     return false;
@@ -3750,9 +3729,6 @@ function isFutureDate(date) {
 }
 
 
-/**
- * Morning update becomes locked at exactly 9:40 AM.
- */
 function isMorningTaskLocked(date) {
   if (isPastDate(date)) {
     return true;
@@ -3781,36 +3757,39 @@ function isMorningTaskLocked(date) {
 }
 
 
-/**
- * Return cutoff label.
- */
 function cutoffLabel() {
   return '9:40 AM';
 }
 
 
+/* ============================================================
+   API RESPONSE HELPERS
+============================================================ */
+
 /**
- * Safely extract report from API response.
- *
- * Supports:
- *
- * response.data.data.report
- * response.data.report
+ * Safely extract report.
  */
 function extractReport(response) {
   return (
     response?.data?.data?.report ||
     response?.data?.report ||
+    response?.data?.data ||
     null
   );
 }
 
 
 /**
- * Safely extract late submission reason.
+ * IMPORTANT:
  *
- * Different backend versions sometimes return this field
- * in different locations. We support all common locations.
+ * Backend versions sometimes return the late reason in:
+ *
+ * report.lateSubmissionReason
+ * report.morning.lateSubmissionReason
+ * report.morning.lateReason
+ * report.lateReason
+ *
+ * Support all of them.
  */
 function extractLateSubmissionReason(report) {
   if (!report) {
@@ -3818,17 +3797,12 @@ function extractLateSubmissionReason(report) {
   }
 
   const possibleReasons = [
-    report.lateSubmissionReason,
-    report.lateReason,
-    report.reasonForLateSubmission,
-
-    report.morning?.lateSubmissionReason,
-    report.morning?.lateReason,
-    report.morning?.reasonForLateSubmission,
-
-    report.morningUpdate?.lateSubmissionReason,
-    report.morningUpdate?.lateReason,
-    report.morningUpdate?.reasonForLateSubmission,
+    report?.lateSubmissionReason,
+    report?.lateReason,
+    report?.morning?.lateSubmissionReason,
+    report?.morning?.lateReason,
+    report?.morning?.reasonForLateSubmission,
+    report?.reasonForLateSubmission,
   ];
 
   const found = possibleReasons.find(
@@ -3841,21 +3815,16 @@ function extractLateSubmissionReason(report) {
 }
 
 
-/**
- * Convert backend task to frontend task.
- */
+/* ============================================================
+   TASK MAPPING
+============================================================ */
+
 function mapTaskFromServer(task) {
   return {
     _id: task?._id || '',
-
-    title:
-      task?.title || '',
-
-    description:
-      task?.description || '',
-
-    priority:
-      task?.priority || 'Medium',
+    title: task?.title || '',
+    description: task?.description || '',
+    priority: task?.priority || 'Medium',
 
     expectedCompletion:
       task?.expectedCompletion || '',
@@ -3872,35 +3841,27 @@ function mapTaskFromServer(task) {
 
 
 /**
- * Convert server report to react-hook-form values.
+ * Map backend report into react-hook-form.
  *
- * fallbackLateReason is important:
- *
- * Sometimes the POST API successfully stores the reason
- * but the returned report does not include the field.
- *
- * In that case we keep the reason that the user just entered
- * instead of clearing the textarea.
+ * fallbackLateReason is important because the backend response
+ * might not immediately contain the reason even though the POST
+ * was successful.
  */
 function mapReportToForm(
   report,
   fallbackLateReason = ''
 ) {
   const tasks =
-    Array.isArray(
-      report?.morning?.tasks
-    )
+    Array.isArray(report?.morning?.tasks)
       ? report.morning.tasks.map(
           mapTaskFromServer
         )
       : [];
 
   const serverLateReason =
-    extractLateSubmissionReason(
-      report
-    );
+    extractLateSubmissionReason(report);
 
-  const finalLateReason =
+  const lateReason =
     serverLateReason ||
     String(
       fallbackLateReason || ''
@@ -3916,7 +3877,7 @@ function mapReportToForm(
       report?.morning?.remarks || '',
 
     lateSubmissionReason:
-      finalLateReason,
+      lateReason,
   };
 }
 
@@ -3942,11 +3903,21 @@ export default function MorningTaskUpdate() {
   const [saving, setSaving] =
     useState(false);
 
-  /**
-   * Force cutoff recalculation.
-   */
   const [lockCheck, setLockCheck] =
     useState(Date.now());
+
+  /**
+   * Frontend copy of the last successfully submitted
+   * late reason.
+   *
+   * This prevents the textarea from becoming empty when
+   * the backend response does not immediately return the
+   * field.
+   */
+  const [
+    savedLateReason,
+    setSavedLateReason,
+  ] = useState('');
 
 
   /* ==========================================================
@@ -3960,15 +3931,13 @@ export default function MorningTaskUpdate() {
     reset,
     watch,
   } = useForm({
+
     defaultValues: {
-      tasks: [
-        emptyTask(),
-      ],
-
+      tasks: [emptyTask()],
       remarks: '',
-
       lateSubmissionReason: '',
     },
+
   });
 
 
@@ -3998,9 +3967,7 @@ export default function MorningTaskUpdate() {
 
   const morningAlreadySubmitted =
     Boolean(
-      existingReport
-        ?.morning
-        ?.submittedAt
+      existingReport?.morning?.submittedAt
     ) ||
     [
       'morning_submitted',
@@ -4030,25 +3997,21 @@ export default function MorningTaskUpdate() {
      LOCK STATE
   ========================================================== */
 
-  const morningLocked =
-    useMemo(() => {
+  const morningLocked = useMemo(() => {
 
-      void lockCheck;
+    void lockCheck;
 
-      return isMorningTaskLocked(
-        date
-      );
+    return isMorningTaskLocked(date);
 
-    }, [
-      date,
-      lockCheck,
-    ]);
+  }, [
+    date,
+    lockCheck,
+  ]);
 
 
   /**
-   * Late submission is ONLY applicable
-   * to today after cutoff when a morning
-   * submission already exists.
+   * Late submission is only applicable for today
+   * when a morning update already exists.
    */
   const lateSubmissionAllowed =
     isToday(date) &&
@@ -4057,8 +4020,7 @@ export default function MorningTaskUpdate() {
 
 
   /**
-   * User can edit existing submitted plan
-   * after cutoff.
+   * Existing submitted plan can still be edited.
    */
   const canEditTasks =
     !morningLocked ||
@@ -4069,7 +4031,7 @@ export default function MorningTaskUpdate() {
 
 
   /**
-   * Draft only before cutoff.
+   * Draft is not allowed after cutoff.
    */
   const canSaveDraft =
     !morningLocked;
@@ -4101,76 +4063,106 @@ export default function MorningTaskUpdate() {
      LOAD DAY
   ========================================================== */
 
-  const loadDay =
-    useCallback(
-      async (selectedDate) => {
+  const loadDay = useCallback(
+    async (selectedDate) => {
 
-        setLoading(true);
-        setLoadError(null);
+      setLoading(true);
+      setLoadError(null);
 
-        try {
+      try {
 
-          const response =
-            await axiosClient.get(
-              '/tasks/day',
-              {
-                params: {
-                  date: selectedDate,
-                },
-              }
-            );
-
-
-          const report =
-            extractReport(
-              response
-            );
+        const response =
+          await axiosClient.get(
+            '/tasks/day',
+            {
+              params: {
+                date: selectedDate,
+              },
+            }
+          );
 
 
-          setExistingReport(
+        const report =
+          extractReport(response);
+
+
+        setExistingReport(
+          report
+        );
+
+
+        /**
+         * Extract reason from server.
+         */
+        const serverLateReason =
+          extractLateSubmissionReason(
             report
           );
 
 
-          reset(
-            mapReportToForm(
-              report
-            )
+        /**
+         * Keep server value when available.
+         */
+        if (serverLateReason) {
+
+          setSavedLateReason(
+            serverLateReason
           );
-
-        } catch (err) {
-
-          console.error(
-            'Load morning tasks error:',
-            err
-          );
-
-
-          const message =
-            err?.response
-              ?.data
-              ?.message ||
-            'Failed to load tasks for this date.';
-
-
-          setLoadError(
-            message
-          );
-
-
-          toast.error(
-            message
-          );
-
-        } finally {
-
-          setLoading(false);
 
         }
 
-      },
-      [reset]
-    );
+
+        /**
+         * If server has no reason but we already have
+         * a locally saved reason, preserve it.
+         */
+        const reasonToUse =
+          serverLateReason ||
+          savedLateReason ||
+          '';
+
+
+        reset(
+          mapReportToForm(
+            report,
+            reasonToUse
+          )
+        );
+
+      } catch (err) {
+
+        console.error(
+          'Load morning tasks error:',
+          err
+        );
+
+
+        const message =
+          err?.response?.data?.message ||
+          'Failed to load tasks for this date.';
+
+
+        setLoadError(
+          message
+        );
+
+
+        toast.error(
+          message
+        );
+
+      } finally {
+
+        setLoading(false);
+
+      }
+
+    },
+    [
+      reset,
+      savedLateReason,
+    ]
+  );
 
 
   useEffect(() => {
@@ -4200,12 +4192,10 @@ export default function MorningTaskUpdate() {
               task?.title || ''
             ).trim();
 
-
           const hours =
             Number(
               task?.estimatedTimeHours
             );
-
 
           return (
             title.length > 0 &&
@@ -4229,9 +4219,7 @@ export default function MorningTaskUpdate() {
           values?.tasks || [];
 
 
-        if (
-          tasks.length === 0
-        ) {
+        if (tasks.length === 0) {
 
           toast.error(
             'Please add at least one task.'
@@ -4243,9 +4231,7 @@ export default function MorningTaskUpdate() {
 
 
         const validTasks =
-          getValidTasks(
-            values
-          );
+          getValidTasks(values);
 
 
         if (
@@ -4261,9 +4247,6 @@ export default function MorningTaskUpdate() {
         }
 
 
-        /**
-         * Detect partially filled rows.
-         */
         const invalidRow =
           tasks.some((task) => {
 
@@ -4271,7 +4254,6 @@ export default function MorningTaskUpdate() {
               String(
                 task?.title || ''
               ).trim();
-
 
             const hoursValue =
               String(
@@ -4281,8 +4263,7 @@ export default function MorningTaskUpdate() {
 
 
             /**
-             * Completely empty rows
-             * are allowed.
+             * Completely empty rows are allowed.
              */
             if (
               !title &&
@@ -4304,9 +4285,7 @@ export default function MorningTaskUpdate() {
             if (
               title &&
               (
-                !Number.isFinite(
-                  hours
-                ) ||
+                !Number.isFinite(hours) ||
                 hours < 0.25 ||
                 hours > 24
               )
@@ -4316,7 +4295,7 @@ export default function MorningTaskUpdate() {
 
 
             /**
-             * Hours exist but title missing.
+             * Hours exist but title doesn't.
              */
             if (
               !title &&
@@ -4331,9 +4310,7 @@ export default function MorningTaskUpdate() {
           });
 
 
-        if (
-          invalidRow
-        ) {
+        if (invalidRow) {
 
           toast.error(
             'Please complete every partially filled task with a title and valid estimated hours.'
@@ -4352,17 +4329,16 @@ export default function MorningTaskUpdate() {
 
 
   /* ==========================================================
-     VALIDATE BEFORE SAVE / SUBMIT
+     VALIDATE BEFORE SAVE
   ========================================================== */
 
   const validateBeforeSave =
     useCallback(
       (values, submit) => {
 
-        /* ------------------------------------------------------
-           PAST DATE
-        ------------------------------------------------------ */
-
+        /**
+         * PAST DATE
+         */
         if (
           isPastDate(date)
         ) {
@@ -4376,10 +4352,9 @@ export default function MorningTaskUpdate() {
         }
 
 
-        /* ------------------------------------------------------
-           FUTURE DATE
-        ------------------------------------------------------ */
-
+        /**
+         * FUTURE DATE
+         */
         if (
           isFutureDate(date)
         ) {
@@ -4393,16 +4368,15 @@ export default function MorningTaskUpdate() {
         }
 
 
-        /* ------------------------------------------------------
-           AFTER 9:40 AM
-        ------------------------------------------------------ */
-
+        /**
+         * AFTER CUTOFF
+         */
         if (
           morningLocked
         ) {
 
           /**
-           * Draft is never allowed after cutoff.
+           * Draft is never allowed.
            */
           if (!submit) {
 
@@ -4416,8 +4390,7 @@ export default function MorningTaskUpdate() {
 
 
           /**
-           * Late submission only when
-           * morning plan already exists.
+           * New plan cannot be created after cutoff.
            */
           if (
             !lateSubmissionAllowed
@@ -4432,10 +4405,12 @@ export default function MorningTaskUpdate() {
           }
 
 
+          /**
+           * Late reason required.
+           */
           const reason =
             String(
-              values
-                ?.lateSubmissionReason ||
+              values?.lateSubmissionReason ||
               ''
             ).trim();
 
@@ -4466,14 +4441,11 @@ export default function MorningTaskUpdate() {
         }
 
 
-        /* ------------------------------------------------------
-           TASK VALIDATION
-        ------------------------------------------------------ */
-
+        /**
+         * TASK VALIDATION
+         */
         if (
-          !validateTasks(
-            values
-          )
+          !validateTasks(values)
         ) {
 
           return false;
@@ -4497,322 +4469,312 @@ export default function MorningTaskUpdate() {
      SAVE / SUBMIT
   ========================================================== */
 
-  const onSave =
-    async (
-      values,
-      submit
-    ) => {
+  const onSave = async (
+    values,
+    submit
+  ) => {
 
-      if (saving) {
-        return;
-      }
-
-
-      if (
-        !validateBeforeSave(
-          values,
-          submit
-        )
-      ) {
-        return;
-      }
+    if (saving) {
+      return;
+    }
 
 
-      setSaving(true);
+    if (
+      !validateBeforeSave(
+        values,
+        submit
+      )
+    ) {
+      return;
+    }
 
 
-      try {
-
-        /* ----------------------------------------------------
-           VALID TASKS
-        ---------------------------------------------------- */
-
-        const validTasks =
-          getValidTasks(
-            values
-          );
+    setSaving(true);
 
 
-        /* ----------------------------------------------------
-           FORMAT TASKS
-        ---------------------------------------------------- */
+    try {
 
-        const formattedTasks =
-          validTasks.map(
-            (task) => ({
-
-              ...(task?._id
-                ? {
-                    _id:
-                      task._id,
-                  }
-                : {}),
-
-              title:
-                String(
-                  task.title || ''
-                ).trim(),
-
-              description:
-                String(
-                  task.description ||
-                  ''
-                ).trim(),
-
-              priority:
-                task.priority ||
-                'Medium',
-
-              expectedCompletion:
-                String(
-                  task.expectedCompletion ||
-                  ''
-                ).trim(),
-
-              estimatedTimeMinutes:
-                hoursToMinutes(
-                  task.estimatedTimeHours
-                ),
-
-              remarks:
-                String(
-                  task.remarks ||
-                  ''
-                ).trim(),
-
-            })
-          );
+      /**
+       * Remove empty task rows.
+       */
+      const validTasks =
+        getValidTasks(values);
 
 
-        if (
-          formattedTasks.length === 0
-        ) {
+      /**
+       * Convert hours to backend minutes.
+       */
+      const formattedTasks =
+        validTasks.map((task) => ({
 
-          toast.error(
-            'Please add at least one valid task.'
-          );
+          ...(task?._id
+            ? {
+                _id: task._id,
+              }
+            : {}),
 
-          return;
-
-        }
-
-
-        /* ----------------------------------------------------
-           LATE REASON
-        ---------------------------------------------------- */
-
-        const lateReason =
-          lateSubmissionAllowed
-            ? String(
-                values
-                  ?.lateSubmissionReason ||
-                ''
-              ).trim()
-            : '';
-
-
-        /* ----------------------------------------------------
-           PAYLOAD
-        ---------------------------------------------------- */
-
-        const payload = {
-
-          date,
-
-          tasks:
-            formattedTasks,
-
-          remarks:
+          title:
             String(
-              values?.remarks ||
+              task.title || ''
+            ).trim(),
+
+          description:
+            String(
+              task.description || ''
+            ).trim(),
+
+          priority:
+            task.priority ||
+            'Medium',
+
+          expectedCompletion:
+            String(
+              task.expectedCompletion ||
               ''
             ).trim(),
 
-          /**
-           * IMPORTANT:
-           * Always send the field to backend.
-           */
-          lateSubmissionReason:
-            lateReason,
+          estimatedTimeMinutes:
+            hoursToMinutes(
+              task.estimatedTimeHours
+            ),
 
-          submit,
+          remarks:
+            String(
+              task.remarks || ''
+            ).trim(),
 
-        };
+        }));
 
 
-        console.log(
-          'Submitting morning update payload:',
+      if (
+        formattedTasks.length === 0
+      ) {
+
+        toast.error(
+          'Please add at least one valid task.'
+        );
+
+        return;
+
+      }
+
+
+      /**
+       * IMPORTANT:
+       *
+       * Always take the reason directly from the
+       * current form before sending.
+       */
+      const lateReason =
+        lateSubmissionAllowed
+          ? String(
+              values?.lateSubmissionReason ||
+              ''
+            ).trim()
+          : '';
+
+
+      /**
+       * Payload.
+       */
+      const payload = {
+
+        date,
+
+        tasks:
+          formattedTasks,
+
+        remarks:
+          String(
+            values?.remarks || ''
+          ).trim(),
+
+        /**
+         * Keep this exact field.
+         */
+        lateSubmissionReason:
+          lateReason,
+
+        /**
+         * Also send the reason using the common
+         * alternative name for compatibility with
+         * backend implementations.
+         *
+         * Remove this line only if your backend rejects
+         * unknown fields.
+         */
+        lateReason:
+          lateReason,
+
+        submit,
+
+      };
+
+
+      console.log(
+        'Morning update payload:',
+        payload
+      );
+
+
+      const response =
+        await axiosClient.post(
+          '/tasks/morning',
           payload
         );
 
 
-        /* ----------------------------------------------------
-           API
-        ---------------------------------------------------- */
-
-        const response =
-          await axiosClient.post(
-            '/tasks/morning',
-            payload
-          );
+      const report =
+        extractReport(response);
 
 
-        const report =
-          extractReport(
-            response
-          );
+      /**
+       * Keep submitted reason locally.
+       */
+      if (
+        submit &&
+        lateSubmissionAllowed &&
+        lateReason
+      ) {
+
+        setSavedLateReason(
+          lateReason
+        );
+
+      }
 
 
-        /**
-         * Keep the user's reason as a fallback
-         * if backend does not return it.
-         */
-        const returnedLateReason =
-          extractLateSubmissionReason(
-            report
-          );
+      /**
+       * If backend returned a reason, prefer
+       * the backend value.
+       */
+      const serverReason =
+        extractLateSubmissionReason(
+          report
+        );
 
 
-        const finalLateReason =
-          returnedLateReason ||
-          lateReason;
+      const reasonToDisplay =
+        serverReason ||
+        lateReason ||
+        savedLateReason ||
+        '';
 
 
-        if (!report) {
-
-          /**
-           * Even if backend doesn't return
-           * the complete report, don't immediately
-           * erase the form.
-           */
-          toast.success(
-            submit
-              ? (
-                  lateSubmissionAllowed
-                    ? 'Late morning update submitted successfully!'
-                    : 'Morning tasks submitted successfully!'
-                )
-              : 'Draft saved successfully!'
-          );
-
-          return;
-
-        }
-
-
-        /* ----------------------------------------------------
-           UPDATE LOCAL REPORT
-        ---------------------------------------------------- */
+      /**
+       * Update report.
+       */
+      if (report) {
 
         setExistingReport(
           report
         );
 
-
-        /* ----------------------------------------------------
-           RESET FORM
-           WITH FALLBACK REASON
-        ---------------------------------------------------- */
-
-        reset(
-          mapReportToForm(
-            report,
-            finalLateReason
-          )
-        );
+      }
 
 
-        /* ----------------------------------------------------
-           SUCCESS MESSAGE
-        ---------------------------------------------------- */
+      /**
+       * IMPORTANT FIX:
+       *
+       * Do NOT reset the late reason to empty if
+       * backend response doesn't return it.
+       */
+      reset(
+        mapReportToForm(
+          report,
+          reasonToDisplay
+        )
+      );
 
-        if (submit) {
 
-          if (
-            lateSubmissionAllowed
-          ) {
+      /**
+       * Success message.
+       */
+      if (submit) {
 
-            toast.success(
-              'Late morning update submitted successfully!'
-            );
+        if (
+          lateSubmissionAllowed
+        ) {
 
-          } else {
-
-            toast.success(
-              'Morning tasks submitted successfully!'
-            );
-
-          }
+          toast.success(
+            'Late morning update submitted successfully!'
+          );
 
         } else {
 
           toast.success(
-            'Draft saved successfully!'
+            'Morning tasks submitted successfully!'
           );
 
         }
 
-      } catch (err) {
+      } else {
 
-        console.error(
-          'Morning task save error:',
-          err
+        toast.success(
+          'Draft saved successfully!'
         );
-
-
-        const status =
-          err?.response?.status;
-
-
-        const message =
-          err?.response
-            ?.data
-            ?.message ||
-          err?.message ||
-          'Could not save morning tasks.';
-
-
-        if (
-          status === 401
-        ) {
-
-          toast.error(
-            'Your session has expired. Please login again.'
-          );
-
-        } else if (
-          status === 403
-        ) {
-
-          toast.error(
-            message ||
-            'You are not allowed to update this morning report.'
-          );
-
-        } else if (
-          status === 409
-        ) {
-
-          toast.error(
-            message ||
-            'This morning report was changed. Please reload the page.'
-          );
-
-        } else {
-
-          toast.error(
-            message
-          );
-
-        }
-
-      } finally {
-
-        setSaving(false);
 
       }
 
-    };
+    } catch (err) {
+
+      console.error(
+        'Morning task save error:',
+        err
+      );
+
+
+      const status =
+        err?.response?.status;
+
+
+      const message =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Could not save morning tasks.';
+
+
+      if (
+        status === 401
+      ) {
+
+        toast.error(
+          'Your session has expired. Please login again.'
+        );
+
+      } else if (
+        status === 403
+      ) {
+
+        toast.error(
+          message ||
+          'You are not allowed to update this morning report.'
+        );
+
+      } else if (
+        status === 409
+      ) {
+
+        toast.error(
+          message ||
+          'This morning report was changed. Please reload the page.'
+        );
+
+      } else {
+
+        toast.error(
+          message
+        );
+
+      }
+
+    } finally {
+
+      setSaving(false);
+
+    }
+
+  };
 
 
   /* ==========================================================
@@ -4826,12 +4788,14 @@ export default function MorningTaskUpdate() {
 
 
   /* ==========================================================
-     CURRENT REASON
+     DISPLAYED LATE REASON
   ========================================================== */
 
-  const cleanLateReason =
+  const displayedLateReason =
     String(
-      lateSubmissionReason || ''
+      lateSubmissionReason ||
+      savedLateReason ||
+      ''
     ).trim();
 
 
@@ -4873,8 +4837,10 @@ export default function MorningTaskUpdate() {
 
 
         <p className="text-sm text-navy-400">
+
           Plan what you intend to work on today.
           Estimated task time is entered in hours.
+
         </p>
 
 
@@ -4885,23 +4851,13 @@ export default function MorningTaskUpdate() {
         {isToday(date) && (
 
           <div
-            className={`
-              mt-3
-              p-3
-              rounded-lg
-              border
-              flex
-              items-start
-              gap-2
-              text-sm
-              ${
-                morningLocked
-                  ? lateSubmissionAllowed
-                    ? 'bg-amber-50 border-amber-200 text-amber-700'
-                    : 'bg-red-50 border-red-200 text-red-700'
-                  : 'bg-blue-50 border-blue-200 text-blue-700'
-              }
-            `}
+            className={`mt-3 p-3 rounded-lg border flex items-start gap-2 text-sm ${
+              morningLocked
+                ? lateSubmissionAllowed
+                  ? 'bg-amber-50 border-amber-200 text-amber-700'
+                  : 'bg-red-50 border-red-200 text-red-700'
+                : 'bg-blue-50 border-blue-200 text-blue-700'
+            }`}
           >
 
             {morningLocked ? (
@@ -4939,8 +4895,10 @@ export default function MorningTaskUpdate() {
               {!morningLocked && (
 
                 <p className="mt-0.5">
+
                   You can add, edit and submit morning
                   tasks normally until 9:40 AM.
+
                 </p>
 
               )}
@@ -4950,9 +4908,11 @@ export default function MorningTaskUpdate() {
                 lateSubmissionAllowed && (
 
                   <p className="mt-0.5">
+
                     Your morning update was already submitted.
                     You can edit or add tasks, but changes
                     must be submitted with a late-submission reason.
+
                   </p>
 
                 )}
@@ -4962,8 +4922,10 @@ export default function MorningTaskUpdate() {
                 !lateSubmissionAllowed && (
 
                   <p className="mt-0.5">
+
                     The 9:40 AM cutoff has passed.
                     A new morning plan cannot be created today.
+
                   </p>
 
                 )}
@@ -4983,9 +4945,7 @@ export default function MorningTaskUpdate() {
 
       {loading ? (
 
-        <LoadingSpinner
-          label="Loading..."
-        />
+        <LoadingSpinner label="Loading..." />
 
       ) : loadError ? (
 
@@ -5023,9 +4983,11 @@ export default function MorningTaskUpdate() {
               />
 
               <span>
+
                 Morning update submitted for review.
                 You can still edit tasks or add more.
                 After 9:40 AM, changes require a late-submission reason.
+
               </span>
 
             </div>
@@ -5081,7 +5043,9 @@ export default function MorningTaskUpdate() {
                 </p>
 
                 <p className="mt-0.5">
+
                   Morning task entry is locked for past dates.
+
                 </p>
 
               </div>
@@ -5122,9 +5086,7 @@ export default function MorningTaskUpdate() {
               className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
             >
 
-              <FiPlus
-                className="h-4 w-4"
-              />
+              <FiPlus className="h-4 w-4" />
 
               Add Task
 
@@ -5153,9 +5115,7 @@ export default function MorningTaskUpdate() {
                 />
 
 
-                {/* ============================================
-                    MAIN ROW
-                ============================================ */}
+                {/* MAIN ROW */}
 
                 <div className="flex items-center gap-2">
 
@@ -5168,15 +5128,11 @@ export default function MorningTaskUpdate() {
 
                   <input
                     readOnly={!canEditTasks}
-                    className={`
-                      input-field
-                      flex-1
-                      ${
-                        !canEditTasks
-                          ? 'bg-gray-100 cursor-not-allowed'
-                          : ''
-                      }
-                    `}
+                    className={`input-field flex-1 ${
+                      !canEditTasks
+                        ? 'bg-gray-100 cursor-not-allowed'
+                        : ''
+                    }`}
                     placeholder="Task title, e.g. Develop login API"
                     {...register(
                       `tasks.${idx}.title`
@@ -5188,16 +5144,11 @@ export default function MorningTaskUpdate() {
 
                   <select
                     disabled={!canEditTasks}
-                    className={`
-                      input-field
-                      w-28
-                      shrink-0
-                      ${
-                        !canEditTasks
-                          ? 'bg-gray-100 cursor-not-allowed'
-                          : ''
-                      }
-                    `}
+                    className={`input-field w-28 shrink-0 ${
+                      !canEditTasks
+                        ? 'bg-gray-100 cursor-not-allowed'
+                        : ''
+                    }`}
                     {...register(
                       `tasks.${idx}.priority`
                     )}
@@ -5235,16 +5186,11 @@ export default function MorningTaskUpdate() {
                         step="0.25"
                         readOnly={!canEditTasks}
                         title="Estimated hours"
-                        className={`
-                          input-field
-                          w-28
-                          pr-12
-                          ${
-                            !canEditTasks
-                              ? 'bg-gray-100 cursor-not-allowed'
-                              : ''
-                          }
-                        `}
+                        className={`input-field w-28 pr-12 ${
+                          !canEditTasks
+                            ? 'bg-gray-100 cursor-not-allowed'
+                            : ''
+                        }`}
                         placeholder="Hours"
                         {...register(
                           `tasks.${idx}.estimatedTimeHours`
@@ -5252,7 +5198,9 @@ export default function MorningTaskUpdate() {
                       />
 
                       <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-navy-400 pointer-events-none">
+
                         hrs
+
                       </span>
 
                     </div>
@@ -5305,23 +5253,17 @@ export default function MorningTaskUpdate() {
                 </div>
 
 
-                {/* ============================================
-                    SECONDARY ROW
-                ============================================ */}
+                {/* SECONDARY ROW */}
 
                 <div className="flex items-center gap-2 pl-8">
 
                   <input
                     readOnly={!canEditTasks}
-                    className={`
-                      input-field
-                      flex-1
-                      ${
-                        !canEditTasks
-                          ? 'bg-gray-100 cursor-not-allowed'
-                          : ''
-                      }
-                    `}
+                    className={`input-field flex-1 ${
+                      !canEditTasks
+                        ? 'bg-gray-100 cursor-not-allowed'
+                        : ''
+                    }`}
                     placeholder="Description (optional)"
                     {...register(
                       `tasks.${idx}.description`
@@ -5331,16 +5273,11 @@ export default function MorningTaskUpdate() {
 
                   <input
                     readOnly={!canEditTasks}
-                    className={`
-                      input-field
-                      w-32
-                      shrink-0
-                      ${
-                        !canEditTasks
-                          ? 'bg-gray-100 cursor-not-allowed'
-                          : ''
-                      }
-                    `}
+                    className={`input-field w-32 shrink-0 ${
+                      !canEditTasks
+                        ? 'bg-gray-100 cursor-not-allowed'
+                        : ''
+                    }`}
                     placeholder="Due by"
                     {...register(
                       `tasks.${idx}.expectedCompletion`
@@ -5350,16 +5287,11 @@ export default function MorningTaskUpdate() {
 
                   <input
                     readOnly={!canEditTasks}
-                    className={`
-                      input-field
-                      w-36
-                      shrink-0
-                      ${
-                        !canEditTasks
-                          ? 'bg-gray-100 cursor-not-allowed'
-                          : ''
-                      }
-                    `}
+                    className={`input-field w-36 shrink-0 ${
+                      !canEditTasks
+                        ? 'bg-gray-100 cursor-not-allowed'
+                        : ''
+                    }`}
                     placeholder="Remarks (optional)"
                     {...register(
                       `tasks.${idx}.remarks`
@@ -5383,18 +5315,13 @@ export default function MorningTaskUpdate() {
             <textarea
               rows={2}
               readOnly={!canEditTasks}
-              className={`
-                input-field
-                ${
-                  !canEditTasks
-                    ? 'bg-gray-100 cursor-not-allowed'
-                    : ''
-                }
-              `}
+              className={`input-field ${
+                !canEditTasks
+                  ? 'bg-gray-100 cursor-not-allowed'
+                  : ''
+              }`}
               placeholder="Overall remarks for today's plan (optional)"
-              {...register(
-                'remarks'
-              )}
+              {...register('remarks')}
             />
 
           </div>
@@ -5437,10 +5364,32 @@ export default function MorningTaskUpdate() {
                   </p>
 
 
+                  {/* =================================================
+                      REASON TEXTAREA
+                  ================================================= */}
+
                   <textarea
                     rows={3}
-                    disabled={saving}
-                    className="input-field bg-white"
+                    value={
+                      lateSubmissionReason
+                    }
+                    onChange={(e) => {
+
+                      const value =
+                        e.target.value;
+
+                      /**
+                       * Update react-hook-form manually.
+                       */
+                      e.target.value =
+                        value;
+
+                    }}
+                    className={`input-field bg-white ${
+                      displayedLateReason
+                        ? 'border-green-400'
+                        : ''
+                    }`}
                     placeholder="Example: Late start due to unexpected internet connectivity issue."
                     {...register(
                       'lateSubmissionReason'
@@ -5448,27 +5397,36 @@ export default function MorningTaskUpdate() {
                   />
 
 
-                  {/* =========================================
+                  {/* =================================================
                       SAVED REASON
-                  ========================================= */}
+                  ================================================= */}
 
-                  {cleanLateReason && (
+                  {displayedLateReason && (
 
-                    <div className="mt-2 flex items-start gap-2 text-xs text-green-700 bg-green-50 border border-green-200 rounded-md p-2">
+                    <div className="mt-3 p-3 rounded-lg border border-green-300 bg-green-50">
 
-                      <FiCheckCircle
-                        className="h-4 w-4 mt-0.5 shrink-0"
-                      />
+                      <div className="flex items-start gap-2">
 
-                      <div>
+                        <FiCheckCircle
+                          className="h-5 w-5 text-green-600 mt-0.5 shrink-0"
+                        />
 
-                        <p className="font-semibold">
-                          Late submission reason saved
-                        </p>
+                        <div>
 
-                        <p className="mt-0.5 break-words">
-                          {cleanLateReason}
-                        </p>
+                          <p className="text-sm font-semibold text-green-700">
+
+                            Your reason for late submission has been saved.
+
+                          </p>
+
+
+                          <p className="text-sm text-green-700 mt-1 break-words">
+
+                            {displayedLateReason}
+
+                          </p>
+
+                        </div>
 
                       </div>
 
@@ -5477,11 +5435,7 @@ export default function MorningTaskUpdate() {
                   )}
 
 
-                  {/* =========================================
-                      REQUIRED MESSAGE
-                  ========================================= */}
-
-                  {!cleanLateReason && (
+                  {!displayedLateReason && (
 
                     <p className="text-xs text-red-500 mt-1">
 
@@ -5511,14 +5465,18 @@ export default function MorningTaskUpdate() {
               <div className="card p-4 bg-red-50 border border-red-200 text-sm text-red-700">
 
                 <p className="font-semibold">
+
                   No morning plan was submitted.
+
                 </p>
 
                 <p className="mt-1">
+
                   The 9:40 AM cutoff has passed, so a new
                   morning plan cannot be created from this page.
                   Please contact your Team Lead/Admin for
                   a late morning update.
+
                 </p>
 
               </div>
@@ -5533,9 +5491,7 @@ export default function MorningTaskUpdate() {
           <div className="flex flex-wrap gap-3 justify-end">
 
 
-            {/* =================================================
-                SAVE DRAFT
-            ================================================= */}
+            {/* SAVE DRAFT */}
 
             <button
               type="button"
@@ -5553,18 +5509,14 @@ export default function MorningTaskUpdate() {
               className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
             >
 
-              <FiSave
-                className="h-4 w-4"
-              />
+              <FiSave className="h-4 w-4" />
 
               Save Draft
 
             </button>
 
 
-            {/* =================================================
-                SUBMIT
-            ================================================= */}
+            {/* SUBMIT */}
 
             <button
               type="button"
@@ -5576,7 +5528,9 @@ export default function MorningTaskUpdate() {
                   morningLocked &&
                   (
                     !lateSubmissionAllowed ||
-                    !cleanLateReason
+                    !String(
+                      lateSubmissionReason
+                    ).trim()
                   )
                 )
               }
@@ -5590,9 +5544,7 @@ export default function MorningTaskUpdate() {
               className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
             >
 
-              <FiSend
-                className="h-4 w-4"
-              />
+              <FiSend className="h-4 w-4" />
 
 
               {lateSubmissionAllowed
