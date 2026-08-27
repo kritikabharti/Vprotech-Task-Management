@@ -20,55 +20,240 @@ const uploadRoutes = require('./routes/uploadRoutes');
 
 const app = express();
 
+/* ============================================================
+   SECURITY HEADERS
+============================================================ */
+
 app.use(helmet());
 
+
+/* ============================================================
+   CORS CONFIGURATION
+============================================================ */
+
+// Allowed frontend origins
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://vprotech-task-management.onrender.com',
+  process.env.CLIENT_URL,
+].filter(Boolean);
+
+
+// CORS middleware
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: function (origin, callback) {
+
+      // Allow requests that do not contain an Origin header.
+      // Useful for Postman, server-to-server requests, etc.
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      // Allow known frontend origins
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      // Reject unknown origins
+      console.warn(
+        `CORS blocked request from origin: ${origin}`
+      );
+
+      return callback(
+        new Error(`CORS blocked for origin: ${origin}`)
+      );
+    },
+
     credentials: true,
   })
 );
 
-app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ extended: true }));
 
-app.use(mongoSanitize());
+/* ============================================================
+   BODY PARSING
+============================================================ */
 
 app.use(
-  morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev')
-);
-
-app.use(generalLimiter);
-
-// crossOriginResourcePolicy is relaxed to 'cross-origin' so that files
-// served from /uploads (profile images) can be loaded by the frontend
-// when it's hosted on a different origin/domain than the API (e.g. a
-// static host + Render). Without this, helmet's default same-origin
-// policy silently blocks <img> tags from loading uploaded images.
-app.use(
-  '/uploads',
-  helmet.crossOriginResourcePolicy({ policy: 'cross-origin' }),
-  express.static(path.join(__dirname, 'uploads'))
-);
-
-app.get('/api/health', (_req, res) =>
-  res.json({
-    success: true,
-    message: 'API is healthy',
+  express.json({
+    limit: '2mb',
   })
 );
 
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/departments', departmentRoutes);
-app.use('/api/tasks', taskRoutes);
-app.use('/api/reports', reportRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/audit-logs', auditRoutes);
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/uploads', uploadRoutes);
+app.use(
+  express.urlencoded({
+    extended: true,
+  })
+);
+
+
+/* ============================================================
+   MONGO SANITIZATION
+============================================================ */
+
+app.use(mongoSanitize());
+
+
+/* ============================================================
+   LOGGING
+============================================================ */
+
+app.use(
+  morgan(
+    process.env.NODE_ENV === 'production'
+      ? 'combined'
+      : 'dev'
+  )
+);
+
+
+/* ============================================================
+   RATE LIMITER
+============================================================ */
+
+app.use(generalLimiter);
+
+
+/* ============================================================
+   UPLOADS / STATIC FILES
+============================================================ */
+
+// crossOriginResourcePolicy is relaxed to 'cross-origin'
+// so profile images can be loaded by the frontend even
+// when frontend and backend are hosted on different domains.
+
+app.use(
+  '/uploads',
+  helmet.crossOriginResourcePolicy({
+    policy: 'cross-origin',
+  }),
+  express.static(
+    path.join(__dirname, 'uploads')
+  )
+);
+
+
+/* ============================================================
+   API HEALTH CHECK
+============================================================ */
+
+app.get(
+  '/api/health',
+  (_req, res) => {
+    res.json({
+      success: true,
+      message: 'API is healthy',
+    });
+  }
+);
+
+
+/* ============================================================
+   AUTH ROUTES
+============================================================ */
+
+app.use(
+  '/api/auth',
+  authRoutes
+);
+
+
+/* ============================================================
+   USER ROUTES
+============================================================ */
+
+app.use(
+  '/api/users',
+  userRoutes
+);
+
+
+/* ============================================================
+   DEPARTMENT ROUTES
+============================================================ */
+
+app.use(
+  '/api/departments',
+  departmentRoutes
+);
+
+
+/* ============================================================
+   TASK ROUTES
+============================================================ */
+
+app.use(
+  '/api/tasks',
+  taskRoutes
+);
+
+
+/* ============================================================
+   REPORT ROUTES
+============================================================ */
+
+app.use(
+  '/api/reports',
+  reportRoutes
+);
+
+
+/* ============================================================
+   NOTIFICATION ROUTES
+============================================================ */
+
+app.use(
+  '/api/notifications',
+  notificationRoutes
+);
+
+
+/* ============================================================
+   AUDIT LOG ROUTES
+============================================================ */
+
+app.use(
+  '/api/audit-logs',
+  auditRoutes
+);
+
+
+/* ============================================================
+   DASHBOARD ROUTES
+============================================================ */
+
+app.use(
+  '/api/dashboard',
+  dashboardRoutes
+);
+
+
+/* ============================================================
+   UPLOAD ROUTES
+============================================================ */
+
+app.use(
+  '/api/uploads',
+  uploadRoutes
+);
+
+
+/* ============================================================
+   404 HANDLER
+============================================================ */
 
 app.use(notFound);
+
+
+/* ============================================================
+   GLOBAL ERROR HANDLER
+============================================================ */
+
 app.use(errorHandler);
+
+
+/* ============================================================
+   EXPORT APP
+============================================================ */
 
 module.exports = app;
