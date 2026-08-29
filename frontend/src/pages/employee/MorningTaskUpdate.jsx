@@ -1,9 +1,5 @@
 
 
-
-
-
-
 import {
   useEffect,
   useState,
@@ -531,22 +527,24 @@ export default function MorningTaskUpdate() {
   ]);
 
 
+  /* After 9:40 AM the employee can still create/edit today's tasks.
+   * A reason is required for the first late submission. */
   const lateSubmissionAllowed =
     isToday(date) &&
-    morningLocked &&
-    morningAlreadySubmitted;
+    morningLocked;
 
 
+  /* Today's tasks stay editable after the cutoff.
+   * Past dates remain locked. */
   const canEditTasks =
-    !morningLocked ||
-    (
-      isToday(date) &&
-      morningAlreadySubmitted
-    );
+    !isPastDate(date);
 
 
+  /* Drafts are blocked before the first late submission, matching
+   * the backend. Once a late report is accepted, drafts are allowed. */
   const canSaveDraft =
-    !morningLocked;
+    !morningLocked ||
+    Boolean(existingReport?.isLateSubmission === true);
 
 
   /* ==========================================================
@@ -1578,13 +1576,10 @@ export default function MorningTaskUpdate() {
                 lateSubmissionAllowed && (
 
                   <p className="mt-0.5">
-
-                    Your morning update was already submitted.
-                    You can edit or add tasks, but changes
-                    must be submitted with a late-submission reason.
-
+                    The 9:40 AM cutoff has passed. Enter a reason
+                    below and submit today's morning tasks. You can
+                    continue editing and re-submit them later today.
                   </p>
-
                 )}
 
 
@@ -2027,9 +2022,9 @@ export default function MorningTaskUpdate() {
 
                   <p className="text-xs text-amber-700 mb-2">
 
-                    The 9:40 AM deadline has passed.
-                    Explain why you are changing or
-                    re-submitting the morning plan.
+                    The 9:40 AM deadline has passed. Enter a reason
+                    before submitting the morning plan. You can reuse
+                    the reason when editing and re-submitting today's tasks.
 
                   </p>
 
@@ -2117,25 +2112,15 @@ export default function MorningTaskUpdate() {
             morningLocked &&
             !morningAlreadySubmitted && (
 
-              <div className="card p-4 bg-red-50 border border-red-200 text-sm text-red-700">
-
-                <p className="font-semibold">
-
-                  No morning plan was submitted.
-
-                </p>
-
+              <div className="card p-4 bg-blue-50 border border-blue-200 text-sm text-blue-700">
+                <p className="font-semibold">Late morning update</p>
                 <p className="mt-1">
-
-                  The 9:40 AM cutoff has passed, so a new
-                  morning plan cannot be created from this page.
-                  Please contact your Team Lead/Admin for
-                  a late morning update.
-
+                  No morning plan has been submitted yet. Enter your
+                  reason above and submit today's tasks. After the
+                  late submission is accepted, you can continue
+                  editing and re-submit the tasks during the day.
                 </p>
-
               </div>
-
             )}
 
 

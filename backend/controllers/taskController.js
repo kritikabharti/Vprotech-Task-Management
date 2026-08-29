@@ -1,6 +1,4 @@
 
-
-
 const mongoose = require('mongoose');
 
 const DailyTaskReport = require('../models/DailyTaskReport');
